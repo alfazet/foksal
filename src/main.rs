@@ -1,16 +1,12 @@
 mod db;
 
-use std::{
-    sync::{Arc, RwLock},
-    thread::sleep,
-    time::Duration,
-};
-
 use globset::{Glob, GlobSetBuilder};
+use std::{thread::sleep, time::Duration};
 
 use crate::db::core::{Db, SharedDb};
 
 fn main() {
+    let music_prefix = "/home/antek/Main/music".to_string();
     let ignore_glob_strs = vec!["*ILLENIUM*".to_string()];
     let allowed_exts = vec!["m4a".to_string()];
     let mut builder = GlobSetBuilder::new();
@@ -18,11 +14,17 @@ fn main() {
         builder.add(Glob::new(&glob_str).unwrap());
     }
     let ignore_glob_set = builder.build().unwrap();
-    let db = Db::new("/home/antek/Main/music", &ignore_glob_set, &allowed_exts).unwrap();
+    let db = Db::new(&music_prefix, &ignore_glob_set, &allowed_exts).unwrap();
     let db = SharedDb::new(db);
-    db.start_fs_watcher(ignore_glob_set, allowed_exts).unwrap();
+    db.start_fs_watcher(music_prefix, ignore_glob_set, &allowed_exts)
+        .unwrap();
 
-    sleep(Duration::from_secs(30));
-
-    // println!("{:#?}", db);
+    sleep(Duration::from_secs(10));
+    println!("{:?}", db.get("abc.m4a"));
+    sleep(Duration::from_secs(10));
+    println!("{:?}", db.get("abc.m4a"));
+    sleep(Duration::from_secs(10));
+    println!("{:?}", db.get("abc.m4a"));
+    sleep(Duration::from_secs(10));
+    println!("{:?}", db.get("abc.m4a"));
 }

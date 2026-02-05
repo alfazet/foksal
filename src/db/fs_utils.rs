@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use globset::GlobSet;
 use jwalk::WalkDir;
 use std::path::{Path, PathBuf};
 
@@ -54,9 +54,19 @@ pub fn walk_dir(
     Ok(paths)
 }
 
+pub fn strip_if_absolute(path: &impl AsRef<Path>, prefix: impl AsRef<Path>) -> Option<&Path> {
+    let path = path.as_ref();
+    if path.is_absolute() {
+        path.strip_prefix(prefix).ok()
+    } else {
+        Some(path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use globset::{Glob, GlobSetBuilder};
     use std::fs::{self, File};
     use tempfile::tempdir;
 

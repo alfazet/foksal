@@ -1,58 +1,26 @@
 use anyhow::Result;
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use globset::GlobSet;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
-    cmp::Ordering,
-    collections::BTreeSet,
+    collections::BTreeMap,
     path::{Path, PathBuf},
     sync::{Arc, RwLock},
 };
 
-use crate::db::{
-    fs_utils,
-    fs_watcher::{self, FsWatcher},
-};
+use crate::db::{fs_utils, fs_watcher};
 
-/// TODO: song metadata
-#[derive(Debug)]
-struct Row {
-    uri: PathBuf, // relative to the db prefix
-}
+type SongData = i32;
+
+type Table = BTreeMap<PathBuf, SongData>;
 
 /// TODO: keep m3u playlists
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Db {
-    pub prefix: PathBuf,
-    rows: BTreeSet<Row>,
+    music_prefix: PathBuf,
+    table: Table,
 }
 
 pub struct SharedDb(pub Arc<RwLock<Db>>);
-
-impl PartialEq for Row {
-    fn eq(&self, other: &Self) -> bool {
-        self.uri.eq(&other.uri)
-    }
-}
-
-impl Eq for Row {}
-
-impl PartialOrd for Row {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Row {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.uri.cmp(&other.uri)
-    }
-}
-
-impl Row {
-    pub fn new(uri: impl Into<PathBuf>) -> Self {
-        Self { uri: uri.into() }
-    }
-}
 
 impl Db {
     pub fn new(
@@ -63,18 +31,43 @@ impl Db {
         let stripped_uris =
             fs_utils::walk_dir(&music_prefix, ignore_glob_set.clone(), allowed_exts)?;
         let music_prefix = music_prefix.as_ref().to_path_buf();
-        let rows = Self::into_rows(stripped_uris);
+        let table = Self::init_table(stripped_uris);
 
         Ok(Self {
-            prefix: music_prefix,
-            rows,
+            music_prefix,
+            table,
         })
     }
 
-    fn into_rows(stripped_uris: impl IntoParallelIterator<Item = PathBuf>) -> BTreeSet<Row> {
+    fn get(&self, uri: impl AsRef<Path>) -> Option<&SongData> {
+        let uri = fs_utils::strip_if_absolute(&uri, &self.music_prefix)?;
+        self.table.get(uri)
+    }
+
+    fn create(&mut self, uri: impl AsRef<Path>, data: SongData) {
+        if let Some(uri) = fs_utils::strip_if_absolute(&uri, &self.music_prefix) {
+            self.table.insert(uri.into(), data);
+        }
+    }
+
+    fn modify(&mut self, uri: impl AsRef<Path>, new_data: SongData) {
+        if let Some(uri) = fs_utils::strip_if_absolute(&uri, &self.music_prefix)
+            && let Some(data) = self.table.get_mut(uri)
+        {
+            *data = new_data;
+        }
+    }
+
+    fn remove(&mut self, uri: impl AsRef<Path>) {
+        if let Some(uri) = fs_utils::strip_if_absolute(&uri, &self.music_prefix) {
+            self.table.remove(uri);
+        }
+    }
+
+    fn init_table(stripped_uris: impl IntoParallelIterator<Item = PathBuf>) -> Table {
         stripped_uris
             .into_par_iter()
-            .filter_map(move |uri| Some(Row::new(uri)))
+            .filter_map(move |uri| Some((uri, 2137)))
             .collect()
     }
 }
@@ -93,11 +86,33 @@ impl SharedDb {
     /// starts the watcher daemon on a separate thread
     pub fn start_fs_watcher(
         &self,
+        music_prefix: impl Into<PathBuf>,
         ignore_glob_set: GlobSet,
-        allowed_exts: Vec<String>,
+        allowed_exts: &[impl AsRef<str> + Into<String>],
     ) -> Result<()> {
-        let watcher = FsWatcher::new(self.clone());
-        watcher.run(ignore_glob_set, allowed_exts)
+        fs_watcher::run(self.clone(), music_prefix, ignore_glob_set, allowed_exts)
+    }
+
+    pub fn get(&self, uri: impl AsRef<Path>) -> Option<SongData> {
+        let db = self.0.read().unwrap();
+        db.get(uri.as_ref()).cloned()
+    }
+
+    pub fn create(&mut self, uri: impl AsRef<Path>) {
+        // TODO: prepare the SongData struct before acquiring the lock
+        let mut db = self.0.write().unwrap();
+        db.create(uri, 7312);
+    }
+
+    pub fn modify(&mut self, uri: impl AsRef<Path>) {
+        // TODO: fetch new song metadata from the uri
+        let mut db = self.0.write().unwrap();
+        db.modify(uri, 1234);
+    }
+
+    pub fn remove(&mut self, uri: impl AsRef<Path>) {
+        let mut db = self.0.write().unwrap();
+        db.remove(uri);
     }
 }
 
@@ -116,12 +131,30 @@ mod tests {
         File::create(root.join("ignored")).unwrap();
         let allowed_exts = ["mp3", "flac"];
         let db = Db::new(root, &GlobSet::default(), &allowed_exts).unwrap();
-        assert_eq!(db.rows.len(), 2);
+        assert_eq!(db.table.len(), 2);
 
-        let mut iter = db.rows.iter();
+        let mut iter = db.table.iter();
         let r1 = iter.next().unwrap();
         let r2 = iter.next().unwrap();
-        assert_eq!(r1.uri, PathBuf::from("song1.mp3"));
-        assert_eq!(r2.uri, PathBuf::from("song2.flac"));
+        assert_eq!(r1.0, Path::new("song1.mp3"));
+        assert_eq!(r2.0, Path::new("song2.flac"));
+    }
+
+    #[test]
+    fn test_crud() {
+        let mut db = Db::default();
+
+        db.create("abc", 1);
+        db.create("def", 2);
+        db.create("xyz", 10);
+        assert_eq!(db.table.len(), 3);
+        assert_eq!(db.get("abc"), Some(&1));
+        assert_eq!(db.get("uvw"), None);
+
+        db.modify("def", 22);
+        assert_eq!(db.get("def"), Some(&22));
+
+        db.remove("def");
+        assert_eq!(db.get("def"), None);
     }
 }
