@@ -5,14 +5,15 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
+clap = { version = "4.5.57", features = ["derive"] }
+crossbeam = "0.8.4"
 futures-util = "0.3.31"
+globset = "0.4.18"
+jwalk = "0.8.1"
+notify = "8.2.0"
+rayon = "1.11.0"
 tokio = { version = "1.49.0", features = ["full"] }
 tokio-tungstenite = "0.28.0"
 
-[[bin]]
-name = "client"
-path = "src/client/bin/main.rs"
-
-[[bin]]
-name = "server"
-path = "src/server/bin/main.rs"
+[dev-dependencies]
+tempfile = "3.10.1"
