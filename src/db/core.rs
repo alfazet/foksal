@@ -1,4 +1,5 @@
 use anyhow::Result;
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
     cmp::Ordering,
@@ -56,14 +57,16 @@ impl Row {
 impl Db {
     pub fn new(
         music_prefix: impl AsRef<Path> + Into<PathBuf>,
-        ignore_glob_strs: &[&str],
-        accept_exts: &[&str],
+        ignore_glob_set: &GlobSet,
+        allowed_exts: &[impl AsRef<str>],
     ) -> Result<Self> {
-        let stripped_uris = fs_utils::walk_dir(&music_prefix, ignore_glob_strs, accept_exts)?;
+        let stripped_uris =
+            fs_utils::walk_dir(&music_prefix, ignore_glob_set.clone(), allowed_exts)?;
+        let music_prefix = music_prefix.as_ref().to_path_buf();
         let rows = Self::into_rows(stripped_uris);
 
         Ok(Self {
-            prefix: music_prefix.as_ref().to_path_buf(),
+            prefix: music_prefix,
             rows,
         })
     }
@@ -88,9 +91,13 @@ impl SharedDb {
     }
 
     /// starts the watcher daemon on a separate thread
-    pub fn start_fs_watcher(&self) -> Result<()> {
+    pub fn start_fs_watcher(
+        &self,
+        ignore_glob_set: GlobSet,
+        allowed_exts: Vec<String>,
+    ) -> Result<()> {
         let watcher = FsWatcher::new(self.clone());
-        watcher.run()
+        watcher.run(ignore_glob_set, allowed_exts)
     }
 }
 
@@ -102,14 +109,13 @@ mod tests {
 
     #[test]
     fn test_db_new() {
-        let temp_dir = tempdir().expect("failed to create temp dir");
+        let temp_dir = tempdir().unwrap();
         let root = temp_dir.path();
         File::create(root.join("song1.mp3")).unwrap();
         File::create(root.join("song2.flac")).unwrap();
         File::create(root.join("ignored")).unwrap();
-        let ignore_globs = [];
-        let accept_exts = ["mp3", "flac"];
-        let db = Db::new(root, &ignore_globs, &accept_exts).expect("failed to create db");
+        let allowed_exts = ["mp3", "flac"];
+        let db = Db::new(root, &GlobSet::default(), &allowed_exts).unwrap();
         assert_eq!(db.rows.len(), 2);
 
         let mut iter = db.rows.iter();

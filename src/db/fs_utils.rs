@@ -16,20 +16,11 @@ fn ensure_path_exists(path: impl AsRef<Path>) -> Result<()> {
     }
 }
 
-fn build_glob_set(glob_strs: &[&str]) -> Result<GlobSet> {
-    let mut builder = GlobSetBuilder::new();
-    for glob_str in glob_strs {
-        builder.add(Glob::new(glob_str)?);
-    }
-
-    Ok(builder.build()?)
-}
-
-fn ext_matches(path: impl AsRef<Path>, accept_exts: &[&str]) -> Option<bool> {
+pub fn ext_matches(path: impl AsRef<Path>, allowed_exts: &[impl AsRef<str>]) -> Option<bool> {
     match path.as_ref().extension() {
         Some(ext) => {
             let ext = ext.to_str()?;
-            Some(accept_exts.contains(&ext))
+            Some(allowed_exts.iter().any(|s| s.as_ref() == ext))
         }
         _ => Some(false),
     }
@@ -37,11 +28,11 @@ fn ext_matches(path: impl AsRef<Path>, accept_exts: &[&str]) -> Option<bool> {
 
 pub fn walk_dir(
     prefix: impl AsRef<Path>,
-    ignore_glob_strs: &[&str],
-    accept_exts: &[&str],
+    ignore_glob_set: GlobSet,
+    allowed_exts: &[impl AsRef<str>],
 ) -> Result<Vec<PathBuf>> {
     ensure_path_exists(&prefix)?;
-    let ignore_glob_set = build_glob_set(ignore_glob_strs)?;
+    // let ignore_glob_set = build_glob_set(ignore_glob_strs)?;
     let paths: Vec<PathBuf> = WalkDir::new(&prefix)
         .process_read_dir(move |_, _, _, children| {
             children.retain(|entry| {
@@ -53,7 +44,7 @@ pub fn walk_dir(
         })
         .into_iter()
         .filter_map(|entry| match entry {
-            Ok(entry) if entry.file_type.is_file() && ext_matches(entry.path(), accept_exts)? => {
+            Ok(entry) if entry.file_type.is_file() && ext_matches(entry.path(), allowed_exts)? => {
                 Some(entry.path().strip_prefix(&prefix).ok()?.to_path_buf())
             }
             _ => None,
@@ -71,7 +62,7 @@ mod tests {
 
     #[test]
     fn test_walk_dir() {
-        let temp_dir = tempdir().expect("failed to create temp dir");
+        let temp_dir = tempdir().unwrap();
         let root = temp_dir.path();
         File::create(root.join("valid1.mp3")).unwrap();
         File::create(root.join("ignored")).unwrap();
@@ -82,9 +73,14 @@ mod tests {
         fs::create_dir(&ignore_dir).unwrap();
         File::create(ignore_dir.join("valid3.mp3")).unwrap();
 
-        let ignore_globs = ["**/ignore_dir/**"];
-        let accept_exts = ["mp3", "flac"];
-        let mut results = walk_dir(root, &ignore_globs, &accept_exts).expect("walk_dir failed");
+        let ignore_glob_strs = ["**/ignore_dir/**"];
+        let allowed_exts = ["mp3", "flac"];
+        let mut builder = GlobSetBuilder::new();
+        for glob_str in ignore_glob_strs {
+            builder.add(Glob::new(glob_str).unwrap());
+        }
+        let ignore_glob_set = builder.build().unwrap();
+        let mut results = walk_dir(root, ignore_glob_set, &allowed_exts).unwrap();
         results.sort();
 
         let expected = vec![
