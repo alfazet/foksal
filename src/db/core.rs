@@ -4,9 +4,13 @@ use std::{
     cmp::Ordering,
     collections::BTreeSet,
     path::{Path, PathBuf},
+    sync::{Arc, RwLock},
 };
 
-use crate::db::fs_utils;
+use crate::db::{
+    fs_utils,
+    fs_watcher::{self, FsWatcher},
+};
 
 /// TODO: song metadata
 #[derive(Debug)]
@@ -17,9 +21,11 @@ struct Row {
 /// TODO: keep m3u playlists
 #[derive(Debug)]
 pub struct Db {
-    prefix: PathBuf,
+    pub prefix: PathBuf,
     rows: BTreeSet<Row>,
 }
+
+pub struct SharedDb(pub Arc<RwLock<Db>>);
 
 impl PartialEq for Row {
     fn eq(&self, other: &Self) -> bool {
@@ -67,6 +73,24 @@ impl Db {
             .into_par_iter()
             .filter_map(move |uri| Some(Row::new(uri)))
             .collect()
+    }
+}
+
+impl Clone for SharedDb {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
+
+impl SharedDb {
+    pub fn new(db: Db) -> Self {
+        Self(Arc::new(RwLock::new(db)))
+    }
+
+    /// starts the watcher daemon on a separate thread
+    pub fn start_fs_watcher(&self) -> Result<()> {
+        let watcher = FsWatcher::new(self.clone());
+        watcher.run()
     }
 }
 
