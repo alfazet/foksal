@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::db::{fs_utils, fs_watcher, song_metadata::SongMetadata};
+use crate::db::{fs_utils, fs_watcher, song_metadata::SongMetadata, tag::TagKey};
 
 type Table = BTreeMap<PathBuf, SongMetadata>;
 
@@ -29,10 +29,6 @@ impl Db {
         let table = Self::init_table(uris);
 
         Ok(Self { table })
-    }
-
-    fn get(&self, uri: impl AsRef<Path>) -> Option<&SongMetadata> {
-        self.table.get(uri.as_ref())
     }
 
     fn create(&mut self, uri: impl AsRef<Path> + Into<PathBuf>, data: SongMetadata) {
@@ -75,17 +71,6 @@ impl SharedDb {
         allowed_exts: &[impl AsRef<str> + Into<String>],
     ) -> Result<()> {
         fs_watcher::run(self.clone(), music_prefix, ignore_glob_set, allowed_exts)
-    }
-
-    pub fn get_all(&self) -> BTreeMap<PathBuf, SongMetadata> {
-        let db = self.0.read().unwrap();
-        db.table.clone()
-    }
-
-    /// TEST METHOD
-    pub fn get(&self, uri: impl AsRef<Path>) -> Option<SongMetadata> {
-        let db = self.0.read().unwrap();
-        db.get(uri).cloned()
     }
 
     pub fn create(&mut self, uri: impl AsRef<Path> + Into<PathBuf>) -> Result<()> {

@@ -1,11 +1,17 @@
 mod db;
 
 use globset::{Glob, GlobSetBuilder};
+use std::fs::File;
 use std::{path::PathBuf, thread::sleep, time::Duration};
 
 use crate::db::core::{Db, SharedDb};
 
 fn main() {
+    tracing_subscriber::fmt()
+        .with_writer(File::create("/tmp/foksal.log").unwrap())
+        .with_ansi(false)
+        .init();
+
     let music_prefix = PathBuf::from("/home/antek/Main/music");
     let ignore_glob_strs = vec!["*ILLENIUM*".to_string()];
     let allowed_exts = vec!["flac".to_string()];
@@ -18,6 +24,4 @@ fn main() {
     let db = SharedDb::new(db);
     db.start_fs_watcher(&music_prefix, ignore_glob_set, &allowed_exts)
         .unwrap();
-
-    println!("{:#?}", db.get_all());
 }
