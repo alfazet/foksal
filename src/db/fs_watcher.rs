@@ -34,15 +34,13 @@ pub fn run(
             {
                 match event.kind {
                     EventKind::Create(_) => {
-                        println!("file `{:?}` was created", uri);
-                        db.create(uri);
+                        // TODO: logging
+                        let _ = db.create(uri);
                     }
                     EventKind::Modify(_) => {
-                        println!("file `{:?}` was modified", uri);
-                        db.modify(uri);
+                        let _ = db.modify(uri);
                     }
                     EventKind::Remove(_) => {
-                        println!("file `{:?}` was removed", uri);
                         db.remove(uri);
                     }
                     _ => (),

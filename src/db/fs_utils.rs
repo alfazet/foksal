@@ -32,7 +32,6 @@ pub fn walk_dir(
     allowed_exts: &[impl AsRef<str>],
 ) -> Result<Vec<PathBuf>> {
     ensure_path_exists(&prefix)?;
-    // let ignore_glob_set = build_glob_set(ignore_glob_strs)?;
     let paths: Vec<PathBuf> = WalkDir::new(&prefix)
         .process_read_dir(move |_, _, _, children| {
             children.retain(|entry| {
@@ -45,22 +44,13 @@ pub fn walk_dir(
         .into_iter()
         .filter_map(|entry| match entry {
             Ok(entry) if entry.file_type.is_file() && ext_matches(entry.path(), allowed_exts)? => {
-                Some(entry.path().strip_prefix(&prefix).ok()?.to_path_buf())
+                Some(dunce::canonicalize(entry.path()).ok()?)
             }
             _ => None,
         })
         .collect();
 
     Ok(paths)
-}
-
-pub fn strip_if_absolute(path: &impl AsRef<Path>, prefix: impl AsRef<Path>) -> Option<&Path> {
-    let path = path.as_ref();
-    if path.is_absolute() {
-        path.strip_prefix(prefix).ok()
-    } else {
-        Some(path)
-    }
 }
 
 #[cfg(test)]
@@ -94,8 +84,8 @@ mod tests {
         results.sort();
 
         let expected = vec![
-            PathBuf::from("subdir/valid2.flac"),
-            PathBuf::from("valid1.mp3"),
+            temp_dir.path().join("subdir/valid2.flac"),
+            temp_dir.path().join("valid1.mp3"),
         ];
         assert_eq!(results, expected);
     }
