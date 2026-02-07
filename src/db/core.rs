@@ -14,7 +14,7 @@ type Table = BTreeMap<PathBuf, SongMetadata>;
 /// TODO: keep m3u playlists
 #[derive(Debug, Default)]
 pub struct Db {
-    table: Table,
+    pub table: Table,
 }
 
 pub struct SharedDb(pub Arc<RwLock<Db>>);
