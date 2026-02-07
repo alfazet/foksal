@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::db::{fs_utils, fs_watcher, song_metadata::SongMetadata, tag::TagKey};
+use crate::db::{fs_utils, fs_watcher, song_metadata::SongMetadata};
 
 type Table = BTreeMap<PathBuf, SongMetadata>;
 
