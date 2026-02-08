@@ -11,7 +11,7 @@ use tokio_tungstenite::tungstenite::Bytes;
 
 use crate::net::core::JsonObject;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Response(JsonObject);
 
 impl Default for Response {

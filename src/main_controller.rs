@@ -21,7 +21,6 @@ async fn handle_client(
     let (msg_tx, mut msg_rx) = tokio_chan::unbounded_channel();
     let (writer_cancel_tx, mut writer_cancel_rx) = oneshot::channel();
 
-    // a task that responds to clients
     tokio::spawn(async move {
         loop {
             if let Some(msg) = msg_rx.recv().await {
@@ -61,6 +60,7 @@ async fn handle_client(
             None => break Err(anyhow!("connection closed unexpectedly")),
         }
     };
+    let _ = msg_tx.send(WsMessage::Close(None));
     let _ = writer_cancel_tx.send(());
 
     res
