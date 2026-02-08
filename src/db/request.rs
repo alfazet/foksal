@@ -6,11 +6,7 @@ use crate::{
         core::{Db, SharedDb},
         tag::TagKey,
     },
-    net::{
-        core::JsonObject,
-        request::{MetadataArgs, ParsedRequest},
-        response::Response,
-    },
+    net::{core::JsonObject, request::MetadataArgs, response::Response},
 };
 
 impl Db {

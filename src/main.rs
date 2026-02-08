@@ -4,6 +4,7 @@
 mod db;
 mod net;
 
+mod local_controller;
 mod main_controller;
 
 use anyhow::Result;
@@ -35,11 +36,14 @@ async fn main() -> Result<()> {
     let c_token = CancellationToken::new();
     let (tx_raw_request, rx_raw_request) = tokio_chan::unbounded_channel();
     let main_controller_task = main_controller::spawn(2137, tx_raw_request, c_token.clone());
-    let db_controller_task = db_controller::spawn(db, rx_raw_request, c_token.clone());
+
+    // here choose local/headless/proxy depending on the cli args
+    // let specific_controller_task = match { ... };
+    let specific_controller_task = local_controller::spawn(db, rx_raw_request, c_token.clone());
 
     tokio::time::sleep(Duration::from_mins(1)).await;
     c_token.cancel();
-    let _ = tokio::join!(main_controller_task, db_controller_task);
+    let _ = tokio::join!(main_controller_task, specific_controller_task);
 
     Ok(())
 }
