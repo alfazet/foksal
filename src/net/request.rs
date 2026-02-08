@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 use tokio::sync::oneshot;
+use tokio_tungstenite::tungstenite::Bytes;
 
 use crate::net::response::Response;
 
@@ -17,11 +18,24 @@ pub enum RequestKind {
 }
 
 pub struct ParsedRequest {
-    kind: RequestKind,
-    respond_to: oneshot::Sender<Response>,
+    pub kind: RequestKind,
+    pub respond_to: oneshot::Sender<Response>,
 }
 
 pub struct RawRequest {
-    data: Vec<u8>,
-    respond_to: oneshot::Sender<Response>,
+    pub data: Bytes,
+    pub respond_to: oneshot::Sender<Response>,
+}
+
+impl RawRequest {
+    pub fn new(data: impl Into<Bytes>, respond_to: oneshot::Sender<Response>) -> Self {
+        Self {
+            data: data.into(),
+            respond_to,
+        }
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
 }
