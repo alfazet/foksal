@@ -40,7 +40,7 @@ async fn handle_client(
                     let raw_request = RawRequest::new(bytes, respond_to);
                     tx_raw_request.send(raw_request)?;
                     let response = response_rx.await?;
-                    let _ = msg_tx.send(WsMessage::Binary(response.to_bytes()?));
+                    let _ = msg_tx.send(WsMessage::Binary(response));
                 }
                 Ok(WsMessage::Ping(data)) => {
                     let _ = msg_tx.send(WsMessage::Pong(data));
@@ -66,7 +66,6 @@ async fn handle_client(
     res
 }
 
-// TODO: pass full config
 async fn run(port: u16, tx_raw_request: tokio_chan::UnboundedSender<RawRequest>) -> Result<()> {
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
     while let Ok((stream, _)) = listener.accept().await {
@@ -82,19 +81,19 @@ async fn run(port: u16, tx_raw_request: tokio_chan::UnboundedSender<RawRequest>)
     Ok(())
 }
 
-pub fn spawn(
+pub async fn start(
     port: u16,
     tx_raw_request: tokio_chan::UnboundedSender<RawRequest>,
     c_token: CancellationToken,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        let res = tokio::select! {
-            res = run(port, tx_raw_request) => res,
-            _ = c_token.cancelled() => Ok(()),
-        };
-        if let Err(e) = res {
-            error!("main controller error ({})", e);
-        }
-        c_token.cancel();
-    })
+) -> Result<()> {
+    let res = tokio::select! {
+        res = run(port, tx_raw_request) => res,
+        _ = c_token.cancelled() => Ok(()),
+    };
+    if let Err(e) = res {
+        error!("main controller error ({})", e);
+    }
+    c_token.cancel();
+
+    Ok(())
 }

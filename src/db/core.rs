@@ -21,11 +21,11 @@ pub struct SharedDb(pub Arc<RwLock<Db>>);
 
 impl Db {
     pub fn new(
-        music_prefix: impl AsRef<Path> + Into<PathBuf>,
+        music_root: impl AsRef<Path> + Into<PathBuf>,
         ignore_glob_set: &GlobSet,
         allowed_exts: &[impl AsRef<str>],
     ) -> Result<Self> {
-        let uris = fs_utils::walk_dir(&music_prefix, ignore_glob_set.clone(), allowed_exts)?;
+        let uris = fs_utils::walk_dir(&music_root, ignore_glob_set.clone(), allowed_exts)?;
         let table = Self::init_table(uris);
 
         Ok(Self { table })
@@ -66,11 +66,11 @@ impl SharedDb {
     /// starts the watcher daemon on a separate thread
     pub fn start_fs_watcher(
         &self,
-        music_prefix: impl Into<PathBuf>,
+        music_root: impl Into<PathBuf>,
         ignore_glob_set: GlobSet,
         allowed_exts: &[impl AsRef<str> + Into<String>],
     ) -> Result<()> {
-        fs_watcher::run(self.clone(), music_prefix, ignore_glob_set, allowed_exts)
+        fs_watcher::run(self.clone(), music_root, ignore_glob_set, allowed_exts)
     }
 
     pub fn create(&mut self, uri: impl AsRef<Path> + Into<PathBuf>) -> Result<()> {

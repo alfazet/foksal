@@ -28,7 +28,7 @@ pub enum RequestKind {
 
 pub struct RawRequest {
     pub data: Bytes,
-    pub respond_to: oneshot::Sender<Response>,
+    pub respond_to: oneshot::Sender<Bytes>,
 }
 
 pub struct ParsedRequest<T: Request> {
@@ -39,7 +39,7 @@ pub struct ParsedRequest<T: Request> {
 impl Request for DbRequest {}
 
 impl RawRequest {
-    pub fn new(data: impl Into<Bytes>, respond_to: oneshot::Sender<Response>) -> Self {
+    pub fn new(data: impl Into<Bytes>, respond_to: oneshot::Sender<Bytes>) -> Self {
         Self {
             data: data.into(),
             respond_to,

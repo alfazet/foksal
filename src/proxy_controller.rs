@@ -26,28 +26,15 @@ async fn run(
     mut rx_raw_request: tokio_chan::UnboundedReceiver<RawRequest>,
 ) -> Result<()> {
     let (mut ws_write, mut ws_read) = ws_stream.split();
-    let (tx_to_headless, mut rx_to_headless) = tokio_chan::unbounded_channel();
-    let (tx_from_headless, mut rx_from_headless) = tokio_chan::unbounded_channel();
-    let (tx_cancel, mut rx1_cancel) = broadcast::channel(1);
-    let mut rx2_cancel = tx_cancel.subscribe();
+    let (tx_msg, mut rx_msg) = tokio_chan::unbounded_channel();
+    let (tx_cancel, mut rx_cancel) = oneshot::channel();
 
     tokio::spawn(async move {
         loop {
-            if let Some(msg) = rx_to_headless.recv().await {
+            if let Some(msg) = rx_msg.recv().await {
                 let _ = ws_write.send(msg).await;
             }
-            if rx1_cancel.try_recv().is_ok() {
-                break;
-            }
-        }
-    });
-
-    tokio::spawn(async move {
-        loop {
-            if let Some(msg) = ws_read.next().await {
-                let _ = tx_from_headless.send(msg);
-            }
-            if rx2_cancel.try_recv().is_ok() {
+            if rx_cancel.try_recv().is_ok() {
                 break;
             }
         }
@@ -55,16 +42,16 @@ async fn run(
 
     while let Some(raw_request) = rx_raw_request.recv().await {
         let RawRequest { data, respond_to } = raw_request;
-        let _ = tx_to_headless.send(WsMessage::Binary(data));
-        let response_msg = rx_from_headless
-            .recv()
+        let _ = tx_msg.send(WsMessage::Binary(data));
+        let response_msg = ws_read
+            .next()
             .await
             .ok_or(anyhow!("connection to headless instance interrupted"))??;
         match response_msg {
             WsMessage::Binary(response_bytes) => {
-                let response = serde_json::from_slice(&response_bytes)?;
-                let _ = respond_to.send(response);
+                let _ = respond_to.send(response_bytes);
             }
+            // TODO: add a `ping` request that will transmit a ping and expect a ping back
             _ => bail!("headless instance sent invalid data"),
         }
     }
@@ -73,23 +60,20 @@ async fn run(
     Ok(())
 }
 
-pub fn spawn(
+pub async fn start(
     ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
     rx_raw_request: tokio_chan::UnboundedReceiver<RawRequest>,
     c_token: CancellationToken,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        // TODO: audio controller task (to handle volume changes and everything else that we don't
-        // forward to the headless instance)
-        let res = tokio::select! {
-            res = run(ws_stream, rx_raw_request) => res,
-            _ = c_token.cancelled() => Ok(()),
-        };
-        if let Err(e) = res {
-            error!("proxy controller error ({})", e);
-        }
-        c_token.cancel();
-    })
+) -> Result<()> {
+    // TODO: audio controller task (to handle volume changes and everything else that we don't
+    // forward to the headless instance)
+    let res = tokio::select! {
+        res = run(ws_stream, rx_raw_request) => res,
+        _ = c_token.cancelled() => Ok(()),
+    };
+    c_token.cancel();
+
+    res
 }
 
 pub async fn connect_to_headless(

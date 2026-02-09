@@ -5,7 +5,7 @@ use symphonia::core::meta::StandardTagKey;
 
 pub static N_SUPPORTED_TAGS: usize = 5;
 
-static TAG_NAMES: [&str; N_SUPPORTED_TAGS] = [
+const TAG_NAMES: [&str; N_SUPPORTED_TAGS] = [
     "album",
     "albumartist",
     "artist",
@@ -13,7 +13,7 @@ static TAG_NAMES: [&str; N_SUPPORTED_TAGS] = [
     "tracktitle",
 ];
 
-static TAG_KEYS: [StandardTagKey; N_SUPPORTED_TAGS] = [
+const TAG_KEYS: [StandardTagKey; N_SUPPORTED_TAGS] = [
     StandardTagKey::Album,
     StandardTagKey::AlbumArtist,
     StandardTagKey::Artist,
