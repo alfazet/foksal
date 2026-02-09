@@ -90,10 +90,7 @@ pub async fn start(
         res = run(port, tx_raw_request) => res,
         _ = c_token.cancelled() => Ok(()),
     };
-    if let Err(e) = res {
-        error!("main controller error ({})", e);
-    }
     c_token.cancel();
 
-    Ok(())
+    res
 }

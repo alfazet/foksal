@@ -56,13 +56,15 @@ async fn local_main(args: LocalArgs) -> Result<()> {
     }
     c_token.cancel();
 
+    let mut overall_res = Ok(());
     while let Some(res) = task_set.join_next().await {
         if let Err(e) = res {
-            bail!("local controller error ({})", e);
+            error!("controller error ({})", e);
+            overall_res = Err(e);
         }
     }
 
-    Ok(())
+    Ok(overall_res?)
 }
 
 async fn proxy_main(args: ProxyArgs) -> Result<()> {
@@ -93,13 +95,15 @@ async fn proxy_main(args: ProxyArgs) -> Result<()> {
     }
     c_token.cancel();
 
+    let mut overall_res = Ok(());
     while let Some(res) = task_set.join_next().await {
         if let Err(e) = res {
-            bail!("proxy controller error ({})", e);
+            error!("controller error ({})", e);
+            overall_res = Err(e);
         }
     }
 
-    Ok(())
+    Ok(overall_res?)
 }
 
 async fn headless_main(args: HeadlessArgs) -> Result<()> {
@@ -133,13 +137,15 @@ async fn headless_main(args: HeadlessArgs) -> Result<()> {
     }
     c_token.cancel();
 
+    let mut overall_res = Ok(());
     while let Some(res) = task_set.join_next().await {
         if let Err(e) = res {
-            bail!("headless controller error ({})", e);
+            error!("controller error ({})", e);
+            overall_res = Err(e);
         }
     }
 
-    Ok(())
+    Ok(overall_res?)
 }
 
 #[tokio::main]
@@ -153,14 +159,9 @@ async fn main() -> Result<()> {
         .with_line_number(true)
         .init();
 
-    let res = match mode {
+    match mode {
         Mode::Local(args) => local_main(args).await,
         Mode::Proxy(args) => proxy_main(args).await,
         Mode::Headless(args) => headless_main(args).await,
-    };
-    if let Err(e) = &res {
-        error!("{}", e);
     }
-
-    res
 }
