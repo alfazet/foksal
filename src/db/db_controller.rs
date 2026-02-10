@@ -1,47 +1,48 @@
+use std::{fmt::Display, thread};
+
 use anyhow::{Result, anyhow};
-use tokio::{
-    sync::{mpsc as tokio_chan, oneshot},
-    task::JoinHandle,
-};
-use tokio_util::sync::CancellationToken;
+use tokio::sync::{mpsc as tokio_chan, oneshot};
 use tracing::{error, instrument};
 
 use crate::{
-    db::core::SharedDb,
+    db::{core::SharedDb, request::ParsedDbRequestArgs},
     net::{
         core::JsonObject,
-        request::{DbRequest, ParsedRequest, RawRequest, RequestKind},
+        request::{DbRequest, ParsedRequest, RawDbRequestArgs, RawRequest, RequestKind},
         response::Response,
     },
 };
 
-async fn run(
-    db: SharedDb,
-    mut rx_db_request: tokio_chan::UnboundedReceiver<ParsedRequest<DbRequest>>,
-) -> Result<()> {
-    while let Some(db_request) = rx_db_request.recv().await {
+fn handle_request<R: RawDbRequestArgs, P: ParsedDbRequestArgs + TryFrom<R>>(
+    db: &SharedDb,
+    raw_args: R,
+    callback: impl Fn(&SharedDb, P) -> Response,
+) -> Response
+where
+    <P as TryFrom<R>>::Error: Display,
+{
+    match raw_args.try_into() {
+        Ok(parsed_args) => callback(db, parsed_args),
+        Err(e) => Response::new_err(format!("argument error ({})", e)),
+    }
+}
+
+fn run(db: SharedDb, mut rx_db_request: tokio_chan::UnboundedReceiver<ParsedRequest<DbRequest>>) {
+    while let Some(db_request) = rx_db_request.blocking_recv() {
         let response = match db_request.request {
-            DbRequest::Metadata(args) => db.metadata(args),
+            DbRequest::Metadata(raw_args) => {
+                handle_request(&db, raw_args, |db, parsed_args| db.metadata(parsed_args))
+            }
         };
         let _ = db_request.respond_to.send(response);
     }
-
-    Ok(())
 }
 
-pub fn spawn(
+pub fn spawn_blocking(
     db: SharedDb,
     rx_db_request: tokio_chan::UnboundedReceiver<ParsedRequest<DbRequest>>,
-    c_token: CancellationToken,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        let res = tokio::select! {
-            res = run(db, rx_db_request) => res,
-            _ = c_token.cancelled() => Ok(()),
-        };
-        if let Err(e) = res {
-            error!("db controller error ({})", e);
-        }
-        c_token.cancel();
-    })
+) {
+    thread::spawn(move || {
+        run(db, rx_db_request);
+    });
 }

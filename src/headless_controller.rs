@@ -53,13 +53,12 @@ pub async fn start(
     c_token: CancellationToken,
 ) -> Result<()> {
     let (tx_db_request, rx_db_request) = tokio_chan::unbounded_channel();
-    let db_controller_task = db_controller::spawn(db, rx_db_request, c_token.clone());
+    db_controller::spawn_blocking(db, rx_db_request);
     let res = tokio::select! {
         res = run(rx_raw_request, tx_db_request) => res,
         _ = c_token.cancelled() => Ok(()),
     };
     c_token.cancel();
-    let _ = db_controller_task.await;
 
     res
 }

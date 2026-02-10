@@ -1,6 +1,10 @@
 use anyhow::{Result, bail};
 use lazy_static::lazy_static;
-use std::{cmp::Ordering, collections::HashMap};
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    fmt::{Display, Formatter},
+};
 use symphonia::core::meta::StandardTagKey;
 
 pub static N_SUPPORTED_TAGS: usize = 5;
@@ -27,6 +31,13 @@ lazy_static! {
             .iter()
             .cloned()
             .zip(TAG_KEYS.iter().cloned())
+            .collect()
+    };
+    static ref INVERSE_TAG_MAP: HashMap<StandardTagKey, &'static str> = {
+        TAG_KEYS
+            .iter()
+            .cloned()
+            .zip(TAG_NAMES.iter().cloned())
             .collect()
     };
     static ref TAG_FALLBACK_RULES: HashMap<StandardTagKey, StandardTagKey> =
@@ -57,6 +68,12 @@ impl TryFrom<StandardTagKey> for TagKey {
         } else {
             bail!("unsupported tag key `{:?}`", st_key);
         }
+    }
+}
+
+impl Display for TagKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", INVERSE_TAG_MAP.get(&self.0).unwrap())
     }
 }
 

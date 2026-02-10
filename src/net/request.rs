@@ -3,13 +3,15 @@ use std::path::PathBuf;
 use tokio::sync::oneshot;
 use tokio_tungstenite::tungstenite::Bytes;
 
-use crate::net::{core::JsonObject, response::Response};
+use crate::net::{core::*, response::Response};
 
 pub trait Request {}
 
+pub trait RawDbRequestArgs {}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MetadataArgs {
+pub struct RawMetadataArgs {
     pub uris: Vec<PathBuf>,
     pub tags: Vec<String>,
 }
@@ -17,7 +19,7 @@ pub struct MetadataArgs {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DbRequest {
-    Metadata(MetadataArgs),
+    Metadata(RawMetadataArgs),
 }
 
 #[derive(Deserialize)]
@@ -62,3 +64,5 @@ where
         }
     }
 }
+
+impl RawDbRequestArgs for RawMetadataArgs {}
