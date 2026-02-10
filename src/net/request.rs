@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use tokio::sync::oneshot;
 use tokio_tungstenite::tungstenite::Bytes;
 
-use crate::net::{core::*, response::Response};
+use crate::{
+    db::filter::RawFilter,
+    net::{core::*, response::Response},
+};
 
 pub trait Request {}
 
@@ -17,9 +20,17 @@ pub struct RawMetadataArgs {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawSelectArgs {
+    pub filters: Vec<RawFilter>,
+    pub group_by: Vec<String>,
+}
+
+#[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DbRequest {
     Metadata(RawMetadataArgs),
+    Select(RawSelectArgs),
 }
 
 #[derive(Deserialize)]
@@ -66,3 +77,5 @@ where
 }
 
 impl RawDbRequestArgs for RawMetadataArgs {}
+
+impl RawDbRequestArgs for RawSelectArgs {}

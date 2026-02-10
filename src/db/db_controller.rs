@@ -33,6 +33,9 @@ fn run(db: SharedDb, mut rx_db_request: tokio_chan::UnboundedReceiver<ParsedRequ
             DbRequest::Metadata(raw_args) => {
                 handle_request(&db, raw_args, |db, parsed_args| db.metadata(parsed_args))
             }
+            DbRequest::Select(raw_args) => {
+                handle_request(&db, raw_args, |db, parsed_args| db.select(parsed_args))
+            }
         };
         let _ = db_request.respond_to.send(response);
     }

@@ -1,13 +1,18 @@
 use anyhow::{Error, Result, bail};
 use serde_json::Value;
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use crate::{
     db::{
         core::{Db, SharedDb},
+        filter::ParsedFilter,
         tag::TagKey,
     },
-    net::{core::JsonObject, request::RawMetadataArgs, response::Response},
+    net::{
+        core::JsonObject,
+        request::{RawMetadataArgs, RawSelectArgs},
+        response::Response,
+    },
 };
 
 pub trait ParsedDbRequestArgs {}
@@ -15,6 +20,11 @@ pub trait ParsedDbRequestArgs {}
 pub struct ParsedMetadataArgs {
     pub uris: Vec<PathBuf>,
     pub tags: Vec<TagKey>,
+}
+
+pub struct ParsedSelectArgs {
+    pub filters: Vec<ParsedFilter>,
+    pub group_by: Vec<TagKey>,
 }
 
 impl ParsedDbRequestArgs for ParsedMetadataArgs {}
@@ -35,6 +45,35 @@ impl TryFrom<RawMetadataArgs> for ParsedMetadataArgs {
         };
 
         Ok(Self { uris, tags })
+    }
+}
+
+impl ParsedDbRequestArgs for ParsedSelectArgs {}
+
+impl TryFrom<RawSelectArgs> for ParsedSelectArgs {
+    type Error = anyhow::Error;
+
+    fn try_from(raw: RawSelectArgs) -> Result<Self> {
+        let filters = match raw
+            .filters
+            .into_iter()
+            .map(ParsedFilter::try_from)
+            .collect()
+        {
+            Ok(filters) => filters,
+            Err(e) => bail!(e),
+        };
+        let group_by = match raw
+            .group_by
+            .iter()
+            .map(|tag_name| TagKey::try_from(tag_name.as_str()))
+            .collect()
+        {
+            Ok(tags) => tags,
+            Err(e) => bail!(e),
+        };
+
+        Ok(Self { filters, group_by })
     }
 }
 
@@ -87,8 +126,35 @@ impl Db {
     ///     ]
     /// }
     /// ```
-    pub fn select(&self) -> Response {
-        todo!()
+    pub fn select(&self, ParsedSelectArgs { filters, group_by }: ParsedSelectArgs) -> Response {
+        let filtered: Vec<_> = self
+            .table
+            .iter()
+            .filter(|pair| pair.1.matches(&filters))
+            .collect();
+        let mut groups = HashMap::new();
+        for (uri, data) in filtered.iter() {
+            let ident: Vec<_> = group_by.iter().map(|tag| data.get(tag)).collect();
+            groups
+                .entry(ident)
+                .and_modify(|uris: &mut Vec<_>| uris.push(uri.to_string_lossy()))
+                .or_insert(vec![uri.to_string_lossy()]);
+        }
+        let values: Vec<_> = groups
+            .iter()
+            .map(|(ident, uris)| {
+                let group_data = group_by
+                    .iter()
+                    .map(|tag| tag.to_string())
+                    .zip(ident.iter().map(|value| (*value).into()));
+                let mut map = JsonObject::from_iter(group_data);
+                map.insert("uris".into(), uris.iter().cloned().collect());
+
+                map
+            })
+            .collect();
+
+        Response::new_ok().with_item("values", &values)
     }
 }
 
@@ -96,5 +162,10 @@ impl SharedDb {
     pub fn metadata(&self, args: ParsedMetadataArgs) -> Response {
         let db = self.0.read().unwrap();
         db.metadata(args)
+    }
+
+    pub fn select(&self, args: ParsedSelectArgs) -> Response {
+        let db = self.0.read().unwrap();
+        db.select(args)
     }
 }

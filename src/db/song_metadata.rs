@@ -6,7 +6,7 @@ use symphonia::core::{
     probe::{Hint, ProbeResult},
 };
 
-use crate::db::tag::TagKey;
+use crate::db::{filter::ParsedFilter, tag::TagKey};
 
 #[derive(Clone, Debug, Default)]
 pub struct SongMetadata {
@@ -66,6 +66,14 @@ impl SongMetadata {
 
     pub fn get(&self, tag_key: &TagKey) -> Option<&str> {
         self.items.get(tag_key).map(|x| x.as_str())
+    }
+
+    pub fn matches(&self, filters: &[ParsedFilter]) -> bool {
+        filters.iter().all(|filter| {
+            self.get(&filter.tag)
+                .map(|value| filter.regex.is_match(value))
+                .is_some_and(|x| x)
+        })
     }
 
     fn merge(self, other: Self) -> Self {

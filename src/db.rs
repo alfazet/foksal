@@ -1,7 +1,7 @@
 pub mod core;
 pub mod db_controller;
+pub mod filter;
 
-mod filter;
 mod fs_utils;
 mod fs_watcher;
 mod request;
