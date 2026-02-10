@@ -15,10 +15,9 @@ pub fn run(
     mut db: SharedDb,
     root: impl Into<PathBuf>,
     ignore_glob_set: GlobSet,
-    allowed_exts: &[impl Into<String> + AsRef<str>],
+    allowed_exts: Vec<String>,
 ) -> Result<()> {
     let root = root.into();
-    let allowed_exts: Vec<String> = allowed_exts.iter().map(|s| s.as_ref().into()).collect();
     let (watcher_tx, watcher_rx) = cbeam_chan::unbounded::<NotifyResult<FsEvent>>();
     let watcher_config =
         WatcherConfig::default().with_poll_interval(Duration::from_secs(POLL_COOLDOWN));

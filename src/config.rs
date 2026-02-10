@@ -52,7 +52,7 @@ pub struct LocalArgs {
 
 // TODO: refactor music_root, ignore_glob_set and allowed_exts into some FsConfig in db/fs module
 pub struct LocalConfig {
-    pub port: u16,
+    pub local_port: u16,
     pub music_root: PathBuf,
     pub ignore_glob_set: GlobSet,
     pub allowed_exts: Vec<String>,
@@ -89,7 +89,7 @@ pub struct HeadlessArgs {
 
 // TODO: refactor music_root, ignore_glob_set and allowed_exts into some FsConfig in db/fs module
 pub struct HeadlessConfig {
-    pub port: u16,
+    pub local_port: u16,
     pub music_root: PathBuf,
     pub ignore_glob_set: GlobSet,
     pub allowed_exts: Vec<String>,
@@ -108,7 +108,7 @@ impl CliConfig {
 impl LocalConfig {
     pub fn merge_with_cli(cli_args: LocalArgs) -> Self {
         Self {
-            port: cli_args.port.unwrap_or(DEFAULT_PORT),
+            local_port: cli_args.port.unwrap_or(DEFAULT_PORT),
             music_root: cli_args.music_root.unwrap_or(DEFAULT_MUSIC_ROOT.into()),
             ignore_glob_set: DEFAULT_IGNORE_GLOB_SET.clone(),
             allowed_exts: DEFAULT_ALLOWED_EXTS.iter().map(|s| s.to_string()).collect(),
@@ -129,7 +129,7 @@ impl ProxyConfig {
 impl HeadlessConfig {
     pub fn merge_with_cli(cli_args: HeadlessArgs) -> Self {
         Self {
-            port: cli_args.port.unwrap_or(DEFAULT_PORT),
+            local_port: cli_args.port.unwrap_or(DEFAULT_PORT),
             music_root: cli_args.music_root.unwrap_or(DEFAULT_MUSIC_ROOT.into()),
             ignore_glob_set: DEFAULT_IGNORE_GLOB_SET.clone(),
             allowed_exts: DEFAULT_ALLOWED_EXTS.iter().map(|s| s.to_string()).collect(),

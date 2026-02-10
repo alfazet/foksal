@@ -33,24 +33,26 @@ async fn run(
     let tx_msg_ping = tx_msg.clone();
     let (tx_response, mut rx_response) = tokio_chan::unbounded_channel();
     let c_token = CancellationToken::new();
-    let (c_token_ping, c_token_request, c_token_read) =
+    let (c_token_ping, c_token_pass_request, c_token_recv_request) =
         (c_token.clone(), c_token.clone(), c_token.clone());
 
+    // task to check if the headless instance is alive
     tokio::spawn(async move {
         loop {
             tokio::select! {
                 _ = time::sleep(Duration::from_secs(TIMEOUT)) => (),
                 _ = c_token_ping.cancelled() => break,
-            }
+            };
             let _ = tx_msg_ping.send(WsMessage::Ping(Bytes::new()));
         }
     });
 
+    // task to pass requests to the headless instance
     tokio::spawn(async move {
         loop {
             let msg = tokio::select! {
                 msg = rx_msg.recv() => msg,
-                _ = c_token_request.cancelled() => break,
+                _ = c_token_pass_request.cancelled() => break,
             };
             if let Some(msg) = msg {
                 let _ = ws_write.send(msg).await;
@@ -58,48 +60,50 @@ async fn run(
         }
     });
 
+    // task to receive requests from local
     tokio::spawn(async move {
         loop {
             tokio::select! {
-                response_msg = ws_read.next() => {
-                    match response_msg {
-                        Some(msg) => {
-                            match msg {
-                                Ok(WsMessage::Binary(bytes)) => {
-                                    let _ = tx_response.send(bytes);
+                raw_request = rx_raw_request.recv() => {
+                    match raw_request {
+                        Some(raw_request) => {
+                            let RawRequest { data, respond_to } = raw_request;
+                            let _ = tx_msg.send(WsMessage::Binary(data));
+                            match rx_response.recv().await {
+                                Some(bytes) => {
+                                    let _ = respond_to.send(bytes);
                                 }
-                                Ok(WsMessage::Pong(_)) => (),
                                 _ => break,
                             }
                         }
                         None => break,
                     }
                 }
-                _ = c_token_read.cancelled() => break,
-            }
+                _ = c_token_recv_request.cancelled() => break,
+            };
         }
     });
 
     let res = loop {
         tokio::select! {
+            // timed out
             _ = time::sleep(Duration::from_secs(2 * TIMEOUT)) => {
                 break Err(anyhow!("connection to headless timed out"));
             }
-            raw_request = rx_raw_request.recv() => {
-                match raw_request {
-                    Some(raw_request) => {
-                        let RawRequest { data, respond_to } = raw_request;
-                        let _ = tx_msg.send(WsMessage::Binary(data));
-                        match rx_response.recv().await {
-                            Some(bytes) => {
-                                let _ = respond_to.send(bytes);
+            // received a response from headless
+            response_msg = ws_read.next() => {
+                match response_msg {
+                    Some(msg) => {
+                        match msg {
+                            Ok(WsMessage::Binary(bytes)) => {
+                                let _ = tx_response.send(bytes);
                             }
-                            _ => {
-                                break Err(anyhow!("connection to headless instance interrupted"));
-                            }
+                            Ok(WsMessage::Pong(_)) => (),
+                            Ok(WsMessage::Close(_)) => break Ok(()),
+                            _ => break Err(anyhow!("headless instance sent invalid data")),
                         }
                     }
-                    None => break Ok(()),
+                    None => break Err(anyhow!("connection to headless instance interrupted")),
                 }
             }
         }

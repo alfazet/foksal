@@ -68,7 +68,7 @@ impl SharedDb {
         &self,
         music_root: impl Into<PathBuf>,
         ignore_glob_set: GlobSet,
-        allowed_exts: &[impl AsRef<str> + Into<String>],
+        allowed_exts: Vec<String>,
     ) -> Result<()> {
         fs_watcher::run(self.clone(), music_root, ignore_glob_set, allowed_exts)
     }
