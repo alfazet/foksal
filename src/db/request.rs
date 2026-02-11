@@ -1,4 +1,4 @@
-use anyhow::{Error, Result, bail};
+use anyhow::{Result, bail};
 use serde_json::Value;
 use std::{collections::HashMap, path::PathBuf};
 
@@ -90,25 +90,26 @@ impl Db {
     /// }
     /// ```
     pub fn metadata(&self, ParsedMetadataArgs { uris, tags }: ParsedMetadataArgs) -> Response {
-        let mut results = Vec::new();
-        for uri in uris {
-            let uri_result = match self.table.get(&uri) {
+        let tag_names: Vec<_> = tags.iter().map(|tag| (tag.to_string(), tag)).collect();
+        let results: Vec<_> = uris
+            .iter()
+            .map(|uri| match self.table.get(uri) {
                 Some(song_data) => {
-                    let mut pairs = JsonObject::new();
-                    for (tag_name, tag_key) in tags.iter().map(|tag| (tag.to_string(), tag)) {
-                        let value = match song_data.get(tag_key) {
-                            Some(value) => Value::String(value.into()),
-                            None => Value::Null,
-                        };
-                        pairs.insert(tag_name, value);
-                    }
-
+                    let pairs: JsonObject = tag_names
+                        .iter()
+                        .map(|(name, key)| {
+                            let value = match song_data.get(key) {
+                                Some(v) => Value::String(v.into()),
+                                None => Value::Null,
+                            };
+                            (name.clone(), value)
+                        })
+                        .collect();
                     Value::Object(pairs)
                 }
                 None => Value::Null,
-            };
-            results.push(uri_result);
-        }
+            })
+            .collect();
 
         Response::new_ok().with_item("metadata", &results)
     }
@@ -127,28 +128,22 @@ impl Db {
     /// }
     /// ```
     pub fn select(&self, ParsedSelectArgs { filters, group_by }: ParsedSelectArgs) -> Response {
-        let filtered: Vec<_> = self
-            .table
-            .iter()
-            .filter(|pair| pair.1.matches(&filters))
-            .collect();
-        let mut groups = HashMap::new();
-        for (uri, data) in filtered.iter() {
+        let mut groups: HashMap<Vec<_>, Vec<_>> = HashMap::new();
+        for (uri, data) in self.table.iter().filter(|(_, data)| data.matches(&filters)) {
             let ident: Vec<_> = group_by.iter().map(|tag| data.get(tag)).collect();
-            groups
-                .entry(ident)
-                .and_modify(|uris: &mut Vec<_>| uris.push(uri.to_string_lossy()))
-                .or_insert(vec![uri.to_string_lossy()]);
+            groups.entry(ident).or_default().push(uri.to_string_lossy());
         }
+
+        let group_by_tag_names: Vec<_> = group_by.iter().map(|tag| tag.to_string()).collect();
         let values: Vec<_> = groups
-            .iter()
+            .into_iter()
             .map(|(ident, uris)| {
-                let group_data = group_by
+                let group_data = group_by_tag_names
                     .iter()
-                    .map(|tag| tag.to_string())
+                    .cloned()
                     .zip(ident.iter().map(|value| (*value).into()));
                 let mut map = JsonObject::from_iter(group_data);
-                map.insert("uris".into(), uris.iter().cloned().collect());
+                map.insert("uris".into(), uris.into_iter().collect());
 
                 map
             })
@@ -160,12 +155,12 @@ impl Db {
 
 impl SharedDb {
     pub fn metadata(&self, args: ParsedMetadataArgs) -> Response {
-        let db = self.0.read().unwrap();
+        let db = self.inner.read().unwrap();
         db.metadata(args)
     }
 
     pub fn select(&self, args: ParsedSelectArgs) -> Response {
-        let db = self.0.read().unwrap();
+        let db = self.inner.read().unwrap();
         db.select(args)
     }
 }

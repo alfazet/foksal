@@ -4,6 +4,7 @@
 mod config;
 mod db;
 mod net;
+mod player;
 
 mod headless_controller;
 mod local_controller;
@@ -31,6 +32,7 @@ use crate::{
         db_controller,
     },
     net::request::RawRequest,
+    player::core::Player,
 };
 
 fn init_db(
@@ -43,6 +45,10 @@ fn init_db(
     db.start_fs_watcher(music_root.as_ref(), ignore_glob_set, allowed_exts)?;
 
     Ok(db)
+}
+
+fn init_player(music_root: impl Into<PathBuf>) -> Player {
+    Player::new(music_root)
 }
 
 async fn common_main(
@@ -82,12 +88,18 @@ async fn local_main(args: LocalArgs) -> Result<()> {
         ignore_glob_set,
         allowed_exts,
     } = config;
-    let db = init_db(music_root, ignore_glob_set, allowed_exts)?;
+    let db = init_db(&music_root, ignore_glob_set, allowed_exts)?;
+    let player = init_player(&music_root);
 
     let mut join_set = JoinSet::new();
     let c_token = CancellationToken::new();
     let (tx_raw_request, rx_raw_request) = tokio_chan::unbounded_channel();
-    join_set.spawn(local_controller::start(db, rx_raw_request, c_token.clone()));
+    join_set.spawn(local_controller::start(
+        db,
+        player,
+        rx_raw_request,
+        c_token.clone(),
+    ));
 
     common_main(local_port, tx_raw_request, join_set, c_token).await
 }

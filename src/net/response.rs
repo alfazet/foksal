@@ -30,10 +30,6 @@ impl<T> From<Result<T>> for Response {
 }
 
 impl Response {
-    pub fn inner(&self) -> &'_ JsonObject {
-        &self.0
-    }
-
     pub fn inner_mut(&mut self) -> &'_ mut JsonObject {
         &mut self.0
     }

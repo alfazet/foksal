@@ -17,7 +17,7 @@ use tracing::{Level, error, event, info, instrument};
 use crate::{
     db::{core::SharedDb, db_controller},
     net::{
-        request::{DbRequest, ParsedRequest, RawRequest, RequestKind},
+        request::{DbRequest, ParsedRequest, RawRequest},
         response::Response,
     },
 };
@@ -65,6 +65,8 @@ async fn run(
         loop {
             tokio::select! {
                 raw_request = rx_raw_request.recv() => {
+                    // TODO: here we'll have to check what kind of request this is
+                    // because if it's a resampler request it has to be handled locally
                     match raw_request {
                         Some(raw_request) => {
                             let RawRequest { data, respond_to } = raw_request;
@@ -118,8 +120,6 @@ pub async fn start(
     rx_raw_request: tokio_chan::UnboundedReceiver<RawRequest>,
     c_token: CancellationToken,
 ) -> Result<()> {
-    // TODO: audio controller task (to handle volume changes and everything else that we don't
-    // forward to the headless instance)
     let res = tokio::select! {
         res = run(ws_stream, rx_raw_request) => res,
         _ = c_token.cancelled() => Ok(()),

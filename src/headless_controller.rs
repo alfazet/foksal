@@ -13,7 +13,7 @@ use tracing::{Level, error, event, info, instrument};
 use crate::{
     db::{core::SharedDb, db_controller},
     net::{
-        request::{DbRequest, ParsedRequest, RawRequest, RequestKind},
+        request::{DbRequest, HeadlessRequestKind, ParsedRequest, RawRequest},
         response::Response,
     },
 };
@@ -23,7 +23,7 @@ async fn run(
     tx_db_request: tokio_chan::UnboundedSender<ParsedRequest<DbRequest>>,
 ) -> Result<()> {
     while let Some(raw_request) = rx_raw_request.recv().await {
-        let request_kind: RequestKind =
+        let request_kind: HeadlessRequestKind =
             match serde_json::from_slice(raw_request.data()).map_err(|e| anyhow!(e)) {
                 Ok(request_kind) => request_kind,
                 Err(e) => {
@@ -35,7 +35,7 @@ async fn run(
             };
         let (parsed_request_respond_to, response_rx) = oneshot::channel();
         match request_kind {
-            RequestKind::DbRequest(db_request) => {
+            HeadlessRequestKind::DbRequest(db_request) => {
                 let parsed_request = ParsedRequest::new(db_request, parsed_request_respond_to);
                 tx_db_request.send(parsed_request)?;
             }

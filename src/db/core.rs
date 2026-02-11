@@ -11,13 +11,19 @@ use crate::db::{fs_utils, fs_watcher, song_metadata::SongMetadata};
 
 type Table = BTreeMap<PathBuf, SongMetadata>;
 
-/// TODO: keep m3u playlists
+/// TODO:
+/// - keep m3u playlists
+/// - allow relative paths in requests
 #[derive(Debug, Default)]
 pub struct Db {
     pub table: Table,
+    music_root: PathBuf,
 }
 
-pub struct SharedDb(pub Arc<RwLock<Db>>);
+pub struct SharedDb {
+    pub inner: Arc<RwLock<Db>>,
+    pub music_root: PathBuf,
+}
 
 impl Db {
     pub fn new(
@@ -27,8 +33,9 @@ impl Db {
     ) -> Result<Self> {
         let uris = fs_utils::walk_dir(&music_root, ignore_glob_set.clone(), allowed_exts)?;
         let table = Self::init_table(uris);
+        let music_root = music_root.as_ref().to_path_buf();
 
-        Ok(Self { table })
+        Ok(Self { table, music_root })
     }
 
     fn create(&mut self, uri: impl AsRef<Path> + Into<PathBuf>, data: SongMetadata) {
@@ -54,13 +61,21 @@ impl Db {
 
 impl Clone for SharedDb {
     fn clone(&self) -> Self {
-        Self(Arc::clone(&self.0))
+        Self {
+            inner: Arc::clone(&self.inner),
+            music_root: self.music_root.clone(),
+        }
     }
 }
 
 impl SharedDb {
     pub fn new(db: Db) -> Self {
-        Self(Arc::new(RwLock::new(db)))
+        let music_root = db.music_root.clone();
+
+        Self {
+            inner: Arc::new(RwLock::new(db)),
+            music_root,
+        }
     }
 
     /// starts the watcher daemon on a separate thread
@@ -75,7 +90,7 @@ impl SharedDb {
 
     pub fn create(&mut self, uri: impl AsRef<Path> + Into<PathBuf>) -> Result<()> {
         let data = SongMetadata::try_new(&uri)?;
-        let mut db = self.0.write().unwrap();
+        let mut db = self.inner.write().unwrap();
         db.create(uri, data);
 
         Ok(())
@@ -83,14 +98,14 @@ impl SharedDb {
 
     pub fn modify(&mut self, uri: impl AsRef<Path>) -> Result<()> {
         let data = SongMetadata::try_new(&uri)?;
-        let mut db = self.0.write().unwrap();
+        let mut db = self.inner.write().unwrap();
         db.modify(uri, data);
 
         Ok(())
     }
 
     pub fn remove(&mut self, uri: impl AsRef<Path>) {
-        let mut db = self.0.write().unwrap();
+        let mut db = self.inner.write().unwrap();
         db.remove(uri);
     }
 }

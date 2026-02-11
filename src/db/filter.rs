@@ -5,8 +5,6 @@ use unidecode::unidecode;
 
 use crate::db::tag::TagKey;
 
-// TODO: add some caching to avoid compiling regexes
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawFilter {
@@ -25,7 +23,7 @@ impl TryFrom<RawFilter> for ParsedFilter {
 
     fn try_from(raw: RawFilter) -> Result<Self> {
         let tag = raw.tag.as_str().try_into()?;
-        let regex = Regex::new(&raw.regex)?;
+        let regex = Regex::new(&unidecode(&raw.regex))?;
 
         Ok(Self { tag, regex })
     }

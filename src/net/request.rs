@@ -12,6 +12,8 @@ pub trait Request {}
 
 pub trait RawDbRequestArgs {}
 
+pub trait RawPlayerRequestArgs {}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawMetadataArgs {
@@ -27,6 +29,13 @@ pub struct RawSelectArgs {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawAddToQueueArgs {
+    pub uri: PathBuf,
+    pub pos: Option<usize>,
+}
+
+#[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DbRequest {
     Metadata(RawMetadataArgs),
@@ -34,8 +43,33 @@ pub enum DbRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PlayerRequest {
+    AddToQueue(RawAddToQueueArgs),
+    State,
+    Play,
+    Toggle,
+    Next,
+    Prev,
+}
+
+#[derive(Deserialize)]
 #[serde(untagged)]
-pub enum RequestKind {
+pub enum LocalRequestKind {
+    DbRequest(DbRequest),
+    PlayerRequest(PlayerRequest),
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum ProxyRequestKind {
+    DbRequest(DbRequest),
+    PlayerRequest(PlayerRequest),
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum HeadlessRequestKind {
     DbRequest(DbRequest),
 }
 
@@ -50,6 +84,8 @@ pub struct ParsedRequest<T: Request> {
 }
 
 impl Request for DbRequest {}
+
+impl Request for PlayerRequest {}
 
 impl RawRequest {
     pub fn new(data: impl Into<Bytes>, respond_to: oneshot::Sender<Bytes>) -> Self {
@@ -79,3 +115,5 @@ where
 impl RawDbRequestArgs for RawMetadataArgs {}
 
 impl RawDbRequestArgs for RawSelectArgs {}
+
+impl RawPlayerRequestArgs for RawAddToQueueArgs {}

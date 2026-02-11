@@ -1,6 +1,5 @@
-use std::{fmt::Display, thread};
-
 use anyhow::{Result, anyhow};
+use std::{fmt::Display, thread};
 use tokio::sync::{mpsc as tokio_chan, oneshot};
 use tracing::{error, instrument};
 
@@ -8,7 +7,7 @@ use crate::{
     db::{core::SharedDb, request::ParsedDbRequestArgs},
     net::{
         core::JsonObject,
-        request::{DbRequest, ParsedRequest, RawDbRequestArgs, RawRequest, RequestKind},
+        request::{DbRequest, ParsedRequest, RawDbRequestArgs, RawRequest},
         response::Response,
     },
 };
