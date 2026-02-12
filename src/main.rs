@@ -31,7 +31,7 @@ use crate::{
         core::{Db, SharedDb},
         db_controller,
     },
-    net::request::{IntraRequest, ParsedRequest, RawRequest},
+    net::request::RawRequest,
     player::core::Player,
 };
 
@@ -54,14 +54,12 @@ fn init_player(music_root: impl Into<PathBuf>) -> Player {
 async fn common_main(
     local_port: u16,
     tx_raw_request: tokio_chan::UnboundedSender<RawRequest>,
-    tx_intra: tokio_chan::UnboundedSender<ParsedRequest<IntraRequest>>,
     mut join_set: JoinSet<Result<()>>,
     c_token: CancellationToken,
 ) -> Result<()> {
     join_set.spawn(main_controller::start(
         local_port,
         tx_raw_request,
-        tx_intra,
         c_token.clone(),
     ));
 
@@ -96,16 +94,14 @@ async fn local_main(args: LocalArgs) -> Result<()> {
     let mut join_set = JoinSet::new();
     let c_token = CancellationToken::new();
     let (tx_raw_request, rx_raw_request) = tokio_chan::unbounded_channel();
-    let (tx_intra, rx_intra) = tokio_chan::unbounded_channel();
     join_set.spawn(local_controller::start(
         db,
         player,
         rx_raw_request,
-        rx_intra,
         c_token.clone(),
     ));
 
-    common_main(local_port, tx_raw_request, tx_intra, join_set, c_token).await
+    common_main(local_port, tx_raw_request, join_set, c_token).await
 }
 
 async fn proxy_main(args: ProxyArgs) -> Result<()> {
@@ -120,18 +116,13 @@ async fn proxy_main(args: ProxyArgs) -> Result<()> {
     let mut join_set = JoinSet::new();
     let c_token = CancellationToken::new();
     let (tx_raw_request, rx_raw_request) = tokio_chan::unbounded_channel();
-    // looks absurd, but we need this to pass intra requests over to the headless instance
-    let tx_raw_request_clone = tx_raw_request.clone();
-    let (tx_intra, rx_intra) = tokio_chan::unbounded_channel();
     join_set.spawn(proxy_controller::start(
         ws_stream,
         rx_raw_request,
-        rx_intra,
-        tx_raw_request_clone,
         c_token.clone(),
     ));
 
-    common_main(local_port, tx_raw_request, tx_intra, join_set, c_token).await
+    common_main(local_port, tx_raw_request, join_set, c_token).await
 }
 
 async fn headless_main(args: HeadlessArgs) -> Result<()> {
@@ -147,15 +138,13 @@ async fn headless_main(args: HeadlessArgs) -> Result<()> {
     let mut join_set = JoinSet::new();
     let c_token = CancellationToken::new();
     let (tx_raw_request, rx_raw_request) = tokio_chan::unbounded_channel();
-    let (tx_intra, rx_intra) = tokio_chan::unbounded_channel();
     join_set.spawn(headless_controller::start(
         db,
         rx_raw_request,
-        rx_intra,
         c_token.clone(),
     ));
 
-    common_main(local_port, tx_raw_request, tx_intra, join_set, c_token).await
+    common_main(local_port, tx_raw_request, join_set, c_token).await
 }
 
 #[tokio::main]

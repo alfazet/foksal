@@ -17,7 +17,7 @@ use tracing::{Level, error, event, info, instrument};
 use crate::{
     db::{core::SharedDb, db_controller},
     net::{
-        request::{DbRequest, IntraRequest, ParsedRequest, RawRequest},
+        request::{DbRequest, ParsedRequest, RawRequest},
         response::Response,
     },
 };
@@ -27,20 +27,14 @@ const TIMEOUT: u64 = 5; // in seconds
 async fn run(
     ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
     mut rx_raw_request: tokio_chan::UnboundedReceiver<RawRequest>,
-    mut rx_intra: tokio_chan::UnboundedReceiver<ParsedRequest<IntraRequest>>,
-    tx_raw_request: tokio_chan::UnboundedSender<RawRequest>,
 ) -> Result<()> {
     let (mut ws_write, mut ws_read) = ws_stream.split();
     let (tx_msg, mut rx_msg) = tokio_chan::unbounded_channel();
     let tx_msg_ping = tx_msg.clone();
     let (tx_response, mut rx_response) = tokio_chan::unbounded_channel();
     let c_token = CancellationToken::new();
-    let (c_token_ping, c_token_pass_intra_request, c_token_pass_request, c_token_recv_request) = (
-        c_token.clone(),
-        c_token.clone(),
-        c_token.clone(),
-        c_token.clone(),
-    );
+    let (c_token_ping, c_token_pass_request, c_token_recv_request) =
+        (c_token.clone(), c_token.clone(), c_token.clone());
 
     // task to check if the headless instance is alive
     tokio::spawn(async move {
@@ -50,30 +44,6 @@ async fn run(
                 _ = c_token_ping.cancelled() => break,
             };
             let _ = tx_msg_ping.send(WsMessage::Ping(Bytes::new()));
-        }
-    });
-
-    // task to pass intra requests to the headless instance
-    tokio::spawn(async move {
-        loop {
-            let request = tokio::select! {
-                request = rx_intra.recv() => request,
-                _ = c_token_pass_intra_request.cancelled() => break,
-            };
-            if let Some(request) = request {
-                // we can unwrap here because we control the request
-                let json_str = serde_json::to_string(&request.request).unwrap();
-                let bytes = json_str.as_bytes().to_vec();
-                let (raw_respond_to, rx_raw_response) = oneshot::channel();
-                let _ = tx_raw_request.send(RawRequest::new(bytes, raw_respond_to));
-                match rx_raw_response.await {
-                    Ok(bytes) => {
-                        let response = serde_json::from_slice(&bytes).unwrap();
-                        let _ = request.respond_to.send(response);
-                    }
-                    Err(_) => break,
-                }
-            }
         }
     });
 
@@ -148,12 +118,10 @@ async fn run(
 pub async fn start(
     ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
     rx_raw_request: tokio_chan::UnboundedReceiver<RawRequest>,
-    rx_intra: tokio_chan::UnboundedReceiver<ParsedRequest<IntraRequest>>,
-    tx_raw_request: tokio_chan::UnboundedSender<RawRequest>,
     c_token: CancellationToken,
 ) -> Result<()> {
     let res = tokio::select! {
-        res = run(ws_stream, rx_raw_request, rx_intra, tx_raw_request) => res,
+        res = run(ws_stream, rx_raw_request) => res,
         _ = c_token.cancelled() => Ok(()),
     };
     c_token.cancel();
