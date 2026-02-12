@@ -1,11 +1,11 @@
 use anyhow::Result;
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use unidecode::unidecode;
 
 use crate::db::tag::TagKey;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawFilter {
     pub tag: String,

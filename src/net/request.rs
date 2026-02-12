@@ -1,5 +1,5 @@
-use serde::Deserialize;
-use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
+use std::{net::SocketAddr, path::PathBuf};
 use tokio::sync::oneshot;
 use tokio_tungstenite::tungstenite::Bytes;
 
@@ -8,41 +8,47 @@ use crate::{
     net::{core::*, response::Response},
 };
 
-pub trait Request {}
+pub trait Request: Serialize {}
 
 pub trait RawDbRequestArgs {}
 
 pub trait RawPlayerRequestArgs {}
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawMetadataArgs {
     pub uris: Vec<PathBuf>,
     pub tags: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawSelectArgs {
     pub filters: Vec<RawFilter>,
     pub group_by: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawAddToQueueArgs {
     pub uri: PathBuf,
     pub pos: Option<usize>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum IntraRequest {
+    Register,
+}
+
+#[derive(Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DbRequest {
     Metadata(RawMetadataArgs),
     Select(RawSelectArgs),
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PlayerRequest {
     AddToQueue(RawAddToQueueArgs),
@@ -62,14 +68,12 @@ pub enum LocalRequestKind {
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-pub enum ProxyRequestKind {
-    DbRequest(DbRequest),
-    PlayerRequest(PlayerRequest),
-}
+pub enum ProxyRequestKind {}
 
 #[derive(Deserialize)]
 #[serde(untagged)]
 pub enum HeadlessRequestKind {
+    IntraRequest(IntraRequest), // the headless instance receives this request through a websocket, that's why
     DbRequest(DbRequest),
 }
 
@@ -82,6 +86,8 @@ pub struct ParsedRequest<T: Request> {
     pub request: T,
     pub respond_to: oneshot::Sender<Response>,
 }
+
+impl Request for IntraRequest {}
 
 impl Request for DbRequest {}
 
