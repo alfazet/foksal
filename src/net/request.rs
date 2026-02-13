@@ -37,14 +37,16 @@ pub struct RawAddToQueueArgs {
 
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum DbRequest {
+pub enum RawDbRequest {
     Metadata(RawMetadataArgs),
     Select(RawSelectArgs),
 }
 
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum PlayerRequest {
+pub enum RawPlayerRequest {
+    Subscribe(SubTarget),
+    Unsubscribe(SubTarget),
     AddToQueue(RawAddToQueueArgs),
     State,
     Play,
@@ -53,29 +55,30 @@ pub enum PlayerRequest {
     Prev,
 }
 
+#[derive(Copy, Clone, Deserialize, Eq, Hash, PartialEq)]
+#[serde(tag = "to", rename_all = "snake_case")]
+pub enum SubTarget {
+    Queue,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RawFileRequest {
+    FetchChunk(PathBuf), // TODO: change to RawFetchChunkArgs, timestamps too
+}
+
 #[derive(Deserialize)]
 #[serde(untagged)]
 pub enum LocalRequestKind {
-    DbRequest(DbRequest),
-    PlayerRequest(PlayerRequest),
+    DbRequest(RawDbRequest),
+    PlayerRequest(RawPlayerRequest),
 }
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-pub enum ProxyRequestKind {
-    DbRequest(DbRequest),
-    PlayerRequest(PlayerRequest),
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-pub enum HeadlessRequestKind {
-    DbRequest(DbRequest),
-}
-
-pub struct RawRequest {
-    pub data: Bytes,
-    pub respond_to: oneshot::Sender<Bytes>,
+pub enum RemoteRequestKind {
+    DbRequest(RawDbRequest),
+    FileRequest(RawFileRequest),
 }
 
 pub struct ParsedRequest<T: Request> {
@@ -83,22 +86,9 @@ pub struct ParsedRequest<T: Request> {
     pub respond_to: oneshot::Sender<Response>,
 }
 
-impl Request for DbRequest {}
+impl Request for RawDbRequest {}
 
-impl Request for PlayerRequest {}
-
-impl RawRequest {
-    pub fn new(data: impl Into<Bytes>, respond_to: oneshot::Sender<Bytes>) -> Self {
-        Self {
-            data: data.into(),
-            respond_to,
-        }
-    }
-
-    pub fn data(&self) -> &[u8] {
-        &self.data
-    }
-}
+impl Request for RawPlayerRequest {}
 
 impl<T> ParsedRequest<T>
 where

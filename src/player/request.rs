@@ -1,11 +1,26 @@
 use anyhow::{Result, bail};
 use serde_json::Value;
-use std::path::PathBuf;
+use std::{net::SocketAddr, path::PathBuf};
+use tokio::sync::{mpsc as tokio_chan, oneshot};
 
 use crate::{
-    net::{request::RawAddToQueueArgs, response::Response},
-    player::core::Player,
+    net::{
+        request::{RawAddToQueueArgs, RawPlayerRequest, SubTarget},
+        response::{EventNotif, Response},
+    },
+    player::core::{Player, PlayerEvent},
 };
+
+pub struct SubscribeArgs {
+    pub target: SubTarget,
+    pub addr: SocketAddr,
+    pub send_to: tokio_chan::UnboundedSender<EventNotif>,
+}
+
+pub struct UnsubscribeArgs {
+    pub target: SubTarget,
+    pub addr: SocketAddr,
+}
 
 pub trait ParsedPlayerRequestArgs {}
 
@@ -16,6 +31,37 @@ pub struct ParsedAddToQueueArgs {
 
 impl ParsedPlayerRequestArgs for ParsedAddToQueueArgs {}
 
+pub enum PlayerRequestKind {
+    Raw(RawPlayerRequest),
+    Subscribe(SubscribeArgs),
+    Unsubscribe(UnsubscribeArgs),
+}
+
+pub struct PlayerRequest {
+    pub kind: PlayerRequestKind,
+    pub respond_to: oneshot::Sender<Response>,
+}
+
+impl SubscribeArgs {
+    pub fn new(
+        target: SubTarget,
+        addr: SocketAddr,
+        send_to: tokio_chan::UnboundedSender<EventNotif>,
+    ) -> Self {
+        Self {
+            target,
+            addr,
+            send_to,
+        }
+    }
+}
+
+impl UnsubscribeArgs {
+    pub fn new(target: SubTarget, addr: SocketAddr) -> Self {
+        Self { target, addr }
+    }
+}
+
 impl TryFrom<RawAddToQueueArgs> for ParsedAddToQueueArgs {
     type Error = anyhow::Error;
 
@@ -24,6 +70,12 @@ impl TryFrom<RawAddToQueueArgs> for ParsedAddToQueueArgs {
             uri: raw.uri,
             pos: raw.pos,
         })
+    }
+}
+
+impl PlayerRequest {
+    pub fn new(kind: PlayerRequestKind, respond_to: oneshot::Sender<Response>) -> Self {
+        Self { kind, respond_to }
     }
 }
 

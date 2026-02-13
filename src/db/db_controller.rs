@@ -7,7 +7,7 @@ use crate::{
     db::{core::SharedDb, request::ParsedDbRequestArgs},
     net::{
         core::JsonObject,
-        request::{DbRequest, ParsedRequest, RawDbRequestArgs, RawRequest},
+        request::{ParsedRequest, RawDbRequest, RawDbRequestArgs},
         response::Response,
     },
 };
@@ -26,13 +26,16 @@ where
     }
 }
 
-fn run(db: SharedDb, mut rx_db_request: tokio_chan::UnboundedReceiver<ParsedRequest<DbRequest>>) {
+fn run(
+    db: SharedDb,
+    mut rx_db_request: tokio_chan::UnboundedReceiver<ParsedRequest<RawDbRequest>>,
+) {
     while let Some(db_request) = rx_db_request.blocking_recv() {
         let response = match db_request.request {
-            DbRequest::Metadata(raw_args) => {
+            RawDbRequest::Metadata(raw_args) => {
                 handle_request(&db, raw_args, |db, parsed_args| db.metadata(parsed_args))
             }
-            DbRequest::Select(raw_args) => {
+            RawDbRequest::Select(raw_args) => {
                 handle_request(&db, raw_args, |db, parsed_args| db.select(parsed_args))
             }
         };
@@ -42,7 +45,7 @@ fn run(db: SharedDb, mut rx_db_request: tokio_chan::UnboundedReceiver<ParsedRequ
 
 pub fn spawn_blocking(
     db: SharedDb,
-    rx_db_request: tokio_chan::UnboundedReceiver<ParsedRequest<DbRequest>>,
+    rx_db_request: tokio_chan::UnboundedReceiver<ParsedRequest<RawDbRequest>>,
 ) {
     thread::spawn(move || {
         run(db, rx_db_request);

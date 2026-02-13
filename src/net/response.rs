@@ -9,10 +9,13 @@ use std::{
 use tokio::sync::oneshot;
 use tokio_tungstenite::tungstenite::Bytes;
 
-use crate::net::core::JsonObject;
+use crate::{net::core::JsonObject, player::core::PlayerEvent};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Response(JsonObject);
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct EventNotif(Value);
 
 impl Default for Response {
     fn default() -> Self {
@@ -60,10 +63,6 @@ impl Response {
         Self(json)
     }
 
-    pub fn usage() -> Self {
-        Self::new_err("only binary messages are accepted")
-    }
-
     pub fn with_item(mut self, key: impl Into<String>, value: &dyn ErasedSerialize) -> Self {
         let value = match serde_json::to_value(value) {
             Ok(value) => value,
@@ -72,5 +71,16 @@ impl Response {
         self.inner_mut().insert(key.into(), value);
 
         self
+    }
+}
+
+impl EventNotif {
+    pub fn from_player_event(event: PlayerEvent) -> Self {
+        Self(serde_json::to_value(event).unwrap())
+    }
+
+    pub fn to_bytes(&self) -> Result<Bytes> {
+        let s = serde_json::to_string(&self.0)?;
+        Ok(s.as_bytes().to_vec().into())
     }
 }

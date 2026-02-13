@@ -6,13 +6,20 @@ use std::{
 };
 use tokio::sync::{mpsc as tokio_chan, oneshot};
 use tracing::{error, instrument};
+use uuid::Uuid;
 
 use crate::{
     net::{
-        request::{ParsedRequest, PlayerRequest, RawPlayerRequestArgs},
+        request::{ParsedRequest, RawAddToQueueArgs, RawPlayerRequest, RawPlayerRequestArgs},
         response::Response,
     },
-    player::{core::Player, request::ParsedPlayerRequestArgs},
+    player::{
+        core::Player,
+        request::{
+            ParsedPlayerRequestArgs, PlayerRequest, PlayerRequestKind, SubscribeArgs,
+            UnsubscribeArgs,
+        },
+    },
 };
 
 fn handle_request<R: RawPlayerRequestArgs, P: ParsedPlayerRequestArgs + TryFrom<R>>(
@@ -43,29 +50,39 @@ where
     }
 }
 
-fn run(
+async fn run(
     mut player: Player,
-    mut rx_player_request: tokio_chan::UnboundedReceiver<ParsedRequest<PlayerRequest>>,
+    mut rx_player_request: tokio_chan::UnboundedReceiver<PlayerRequest>,
 ) {
-    while let Some(player_request) = rx_player_request.blocking_recv() {
-        let response = match player_request.request {
-            PlayerRequest::AddToQueue(raw_args) => {
-                handle_request_mut(&mut player, raw_args, |player, parsed_args| {
-                    player.add_to_queue(parsed_args)
-                })
+    while let Some(PlayerRequest { kind, respond_to }) = rx_player_request.recv().await {
+        let response = match kind {
+            PlayerRequestKind::Raw(raw_request) => match raw_request {
+                RawPlayerRequest::AddToQueue(raw_args) => {
+                    handle_request_mut(&mut player, raw_args, |player, args| {
+                        player.add_to_queue(args)
+                    })
+                }
+                _ => unreachable!(),
+            },
+            PlayerRequestKind::Subscribe(SubscribeArgs {
+                target,
+                addr,
+                send_to,
+            }) => {
+                player.add_subscriber(target, addr, send_to);
+                Response::new_ok()
             }
-            PlayerRequest::State => player.state(),
-            _ => todo!(),
+            PlayerRequestKind::Unsubscribe(UnsubscribeArgs { target, addr }) => {
+                player.remove_subscriber(target, addr);
+                Response::new_ok()
+            }
         };
-        let _ = player_request.respond_to.send(response);
+        let _ = respond_to.send(response);
     }
 }
 
-pub fn spawn_blocking(
-    player: Player,
-    rx_player_request: tokio_chan::UnboundedReceiver<ParsedRequest<PlayerRequest>>,
-) {
-    thread::spawn(move || {
-        run(player, rx_player_request);
+pub fn spawn(player: Player, rx_player_request: tokio_chan::UnboundedReceiver<PlayerRequest>) {
+    tokio::spawn(async move {
+        run(player, rx_player_request).await;
     });
 }

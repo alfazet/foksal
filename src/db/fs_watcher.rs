@@ -18,14 +18,14 @@ pub fn run(
     allowed_exts: Vec<String>,
 ) -> Result<()> {
     let root = root.into();
-    let (watcher_tx, watcher_rx) = cbeam_chan::unbounded::<NotifyResult<FsEvent>>();
+    let (tx_watcher, rx_watcher) = cbeam_chan::unbounded::<NotifyResult<FsEvent>>();
     let watcher_config =
         WatcherConfig::default().with_poll_interval(Duration::from_secs(POLL_COOLDOWN));
-    let mut watcher = PollWatcher::new(watcher_tx, watcher_config)?;
+    let mut watcher = PollWatcher::new(tx_watcher, watcher_config)?;
 
     let _ = thread::spawn(move || {
         let _ = watcher.watch(&root, RecursiveMode::Recursive);
-        for event in watcher_rx.into_iter().flatten() {
+        for event in rx_watcher.into_iter().flatten() {
             // react only to events regarding the relevant files
             if let Some(uri) = event.paths.first()
                 && fs_utils::ext_matches(uri, &allowed_exts).is_some_and(|x| x)

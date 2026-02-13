@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Queue {
     list: Vec<PathBuf>,
     pos: Option<usize>,
@@ -14,6 +14,10 @@ impl Queue {
 
     pub fn list(&self) -> &[PathBuf] {
         &self.list
+    }
+
+    pub fn list_cloned(&self) -> Vec<PathBuf> {
+        self.list.clone()
     }
 
     pub fn cur(&self) -> Option<&PathBuf> {
