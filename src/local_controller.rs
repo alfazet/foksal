@@ -14,22 +14,31 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Level, error, event, info, instrument, warn};
 
 use crate::{
-    db::{core::SharedDb, db_controller},
+    db::{
+        core::SharedDb,
+        db_controller,
+        request::{DbRequest, DbRequestKind},
+    },
     net::{
-        request::{LocalRequestKind, ParsedRequest, RawDbRequest, RawPlayerRequest, SubTarget},
+        request::{
+            LocalRequestKind, ParsedRequest, PlayerSubTarget, RawDbRequest, RawPlayerRequest,
+            SubscribeArgs, UnsubscribeArgs,
+        },
         response::{EventNotif, Response},
     },
     player::{
         core::{Player, PlayerEvent},
         player_controller,
-        request::{PlayerRequest, PlayerRequestKind, SubscribeArgs, UnsubscribeArgs},
+        request::{PlayerRequest, PlayerRequestKind},
     },
 };
+
+// TODO: refactor into shorter functions
 
 async fn handle_request(
     bytes: Bytes,
     addr: &SocketAddr,
-    tx_db_request: &tokio_chan::UnboundedSender<ParsedRequest<RawDbRequest>>,
+    tx_db_request: &tokio_chan::UnboundedSender<DbRequest>,
     tx_player_request: &tokio_chan::UnboundedSender<PlayerRequest>,
     tx_event: &tokio_chan::UnboundedSender<EventNotif>,
 ) -> Result<Response> {
@@ -42,8 +51,20 @@ async fn handle_request(
 
     match request_kind {
         LocalRequestKind::DbRequest(db_request) => {
-            let parsed_request = ParsedRequest::new(db_request, respond_to);
-            tx_db_request.send(parsed_request)?;
+            let request = match db_request {
+                RawDbRequest::Subscribe(target) => {
+                    let args = SubscribeArgs::new(target, *addr, tx_event.clone());
+                    let kind = DbRequestKind::Subscribe(args);
+                    DbRequest::new(kind, respond_to)
+                }
+                RawDbRequest::Unsubscribe(target) => {
+                    let args = UnsubscribeArgs::new(target, *addr);
+                    let kind = DbRequestKind::Unsubscribe(args);
+                    DbRequest::new(kind, respond_to)
+                }
+                other_request => DbRequest::new(DbRequestKind::Raw(other_request), respond_to),
+            };
+            tx_db_request.send(request)?;
         }
         LocalRequestKind::PlayerRequest(player_request) => {
             let request = match player_request {
@@ -71,7 +92,7 @@ async fn handle_request(
 async fn handle_client(
     stream: TcpStream,
     addr: SocketAddr,
-    tx_db_request: tokio_chan::UnboundedSender<ParsedRequest<RawDbRequest>>,
+    tx_db_request: tokio_chan::UnboundedSender<DbRequest>,
     tx_player_request: tokio_chan::UnboundedSender<PlayerRequest>,
     c_token: CancellationToken,
 ) -> Result<()> {
@@ -134,7 +155,7 @@ async fn handle_client(
 
 async fn run(
     port: u16,
-    tx_db_request: tokio_chan::UnboundedSender<ParsedRequest<RawDbRequest>>,
+    tx_db_request: tokio_chan::UnboundedSender<DbRequest>,
     tx_player_request: tokio_chan::UnboundedSender<PlayerRequest>,
     c_token: CancellationToken,
 ) -> Result<()> {

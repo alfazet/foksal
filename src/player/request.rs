@@ -5,22 +5,14 @@ use tokio::sync::{mpsc as tokio_chan, oneshot};
 
 use crate::{
     net::{
-        request::{RawAddToQueueArgs, RawPlayerRequest, SubTarget},
+        request::{
+            PlayerSubTarget, RawAddToQueueArgs, RawPlayerRequest, SubTarget, SubscribeArgs,
+            UnsubscribeArgs,
+        },
         response::{EventNotif, Response},
     },
     player::core::{Player, PlayerEvent},
 };
-
-pub struct SubscribeArgs {
-    pub target: SubTarget,
-    pub addr: SocketAddr,
-    pub send_to: tokio_chan::UnboundedSender<EventNotif>,
-}
-
-pub struct UnsubscribeArgs {
-    pub target: SubTarget,
-    pub addr: SocketAddr,
-}
 
 pub trait ParsedPlayerRequestArgs {}
 
@@ -29,12 +21,10 @@ pub struct ParsedAddToQueueArgs {
     pub pos: Option<usize>,
 }
 
-impl ParsedPlayerRequestArgs for ParsedAddToQueueArgs {}
-
 pub enum PlayerRequestKind {
     Raw(RawPlayerRequest),
-    Subscribe(SubscribeArgs),
-    Unsubscribe(UnsubscribeArgs),
+    Subscribe(SubscribeArgs<PlayerSubTarget>),
+    Unsubscribe(UnsubscribeArgs<PlayerSubTarget>),
 }
 
 pub struct PlayerRequest {
@@ -42,9 +32,9 @@ pub struct PlayerRequest {
     pub respond_to: oneshot::Sender<Response>,
 }
 
-impl SubscribeArgs {
+impl<T: SubTarget> SubscribeArgs<T> {
     pub fn new(
-        target: SubTarget,
+        target: T,
         addr: SocketAddr,
         send_to: tokio_chan::UnboundedSender<EventNotif>,
     ) -> Self {
@@ -56,11 +46,13 @@ impl SubscribeArgs {
     }
 }
 
-impl UnsubscribeArgs {
-    pub fn new(target: SubTarget, addr: SocketAddr) -> Self {
+impl<T: SubTarget> UnsubscribeArgs<T> {
+    pub fn new(target: T, addr: SocketAddr) -> Self {
         Self { target, addr }
     }
 }
+
+impl ParsedPlayerRequestArgs for ParsedAddToQueueArgs {}
 
 impl TryFrom<RawAddToQueueArgs> for ParsedAddToQueueArgs {
     type Error = anyhow::Error;

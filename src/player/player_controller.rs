@@ -10,15 +10,15 @@ use uuid::Uuid;
 
 use crate::{
     net::{
-        request::{ParsedRequest, RawAddToQueueArgs, RawPlayerRequest, RawPlayerRequestArgs},
+        request::{
+            ParsedRequest, RawAddToQueueArgs, RawPlayerRequest, RawPlayerRequestArgs,
+            SubscribeArgs, UnsubscribeArgs,
+        },
         response::Response,
     },
     player::{
         core::Player,
-        request::{
-            ParsedPlayerRequestArgs, PlayerRequest, PlayerRequestKind, SubscribeArgs,
-            UnsubscribeArgs,
-        },
+        request::{ParsedPlayerRequestArgs, PlayerRequest, PlayerRequestKind},
     },
 };
 

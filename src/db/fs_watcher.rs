@@ -9,7 +9,7 @@ use std::{path::PathBuf, thread, time::Duration};
 
 use crate::db::{core::SharedDb, fs_utils};
 
-const POLL_COOLDOWN: u64 = 1; // in seconds
+const POLL_TIMEOUT: u64 = 2; // in seconds
 
 pub fn run(
     mut db: SharedDb,
@@ -20,20 +20,18 @@ pub fn run(
     let root = root.into();
     let (tx_watcher, rx_watcher) = cbeam_chan::unbounded::<NotifyResult<FsEvent>>();
     let watcher_config =
-        WatcherConfig::default().with_poll_interval(Duration::from_secs(POLL_COOLDOWN));
+        WatcherConfig::default().with_poll_interval(Duration::from_secs(POLL_TIMEOUT));
     let mut watcher = PollWatcher::new(tx_watcher, watcher_config)?;
 
     let _ = thread::spawn(move || {
         let _ = watcher.watch(&root, RecursiveMode::Recursive);
         for event in rx_watcher.into_iter().flatten() {
-            // react only to events regarding the relevant files
             if let Some(uri) = event.paths.first()
                 && fs_utils::ext_matches(uri, &allowed_exts).is_some_and(|x| x)
                 && !ignore_glob_set.is_match(uri)
             {
                 match event.kind {
                     EventKind::Create(_) => {
-                        // TODO: logging
                         let _ = db.create(uri);
                     }
                     EventKind::Modify(_) => {

@@ -1,6 +1,7 @@
 use anyhow::{Result, bail};
 use serde_json::Value;
 use std::{collections::HashMap, path::PathBuf};
+use tokio::sync::oneshot;
 
 use crate::{
     db::{
@@ -10,7 +11,10 @@ use crate::{
     },
     net::{
         core::JsonObject,
-        request::{RawMetadataArgs, RawSelectArgs},
+        request::{
+            DbSubTarget, RawDbRequest, RawMetadataArgs, RawSelectArgs, SubscribeArgs,
+            UnsubscribeArgs,
+        },
         response::Response,
     },
 };
@@ -25,6 +29,17 @@ pub struct ParsedMetadataArgs {
 pub struct ParsedSelectArgs {
     pub filters: Vec<ParsedFilter>,
     pub group_by: Vec<TagKey>,
+}
+
+pub enum DbRequestKind {
+    Raw(RawDbRequest),
+    Subscribe(SubscribeArgs<DbSubTarget>),
+    Unsubscribe(UnsubscribeArgs<DbSubTarget>),
+}
+
+pub struct DbRequest {
+    pub kind: DbRequestKind,
+    pub respond_to: oneshot::Sender<Response>,
 }
 
 impl ParsedDbRequestArgs for ParsedMetadataArgs {}
@@ -74,6 +89,12 @@ impl TryFrom<RawSelectArgs> for ParsedSelectArgs {
         };
 
         Ok(Self { filters, group_by })
+    }
+}
+
+impl DbRequest {
+    pub fn new(kind: DbRequestKind, respond_to: oneshot::Sender<Response>) -> Self {
+        Self { kind, respond_to }
     }
 }
 

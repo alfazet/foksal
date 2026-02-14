@@ -8,7 +8,7 @@ use std::{
 use tokio::sync::mpsc as tokio_chan;
 
 use crate::{
-    net::{request::SubTarget, response::EventNotif},
+    net::{request::PlayerSubTarget, response::EventNotif},
     player::{queue::Queue, request::ParsedAddToQueueArgs},
 };
 
@@ -21,7 +21,7 @@ pub enum PlayerEvent {
 pub struct Player {
     music_root: PathBuf,
     queue: Queue,
-    subscribers: HashMap<(SubTarget, SocketAddr), tokio_chan::UnboundedSender<EventNotif>>,
+    subscribers: HashMap<(PlayerSubTarget, SocketAddr), tokio_chan::UnboundedSender<EventNotif>>,
 }
 
 impl Player {
@@ -39,18 +39,18 @@ impl Player {
 
     pub fn add_subscriber(
         &mut self,
-        target: SubTarget,
+        target: PlayerSubTarget,
         addr: SocketAddr,
         send_to: tokio_chan::UnboundedSender<EventNotif>,
     ) {
         self.subscribers.insert((target, addr), send_to);
     }
 
-    pub fn remove_subscriber(&mut self, target: SubTarget, addr: SocketAddr) {
+    pub fn remove_subscriber(&mut self, target: PlayerSubTarget, addr: SocketAddr) {
         self.subscribers.remove(&(target, addr));
     }
 
-    fn notify_subscribers(&self, target: SubTarget, event: PlayerEvent) {
+    fn notify_subscribers(&self, target: PlayerSubTarget, event: PlayerEvent) {
         for (sub, send_to) in self.subscribers.iter() {
             let (sub_target, _) = sub;
             if *sub_target == target {
@@ -73,7 +73,7 @@ impl Player {
         };
         if res.is_ok() {
             self.notify_subscribers(
-                SubTarget::Queue,
+                PlayerSubTarget::Queue,
                 PlayerEvent::Queue {
                     queue: self.queue.list_cloned(),
                 },
