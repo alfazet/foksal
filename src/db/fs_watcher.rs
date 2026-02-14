@@ -6,6 +6,7 @@ use notify::{
     Result as NotifyResult, Watcher,
 };
 use std::{path::PathBuf, thread, time::Duration};
+use tracing::warn;
 
 use crate::db::{core::SharedDb, fs_utils};
 
@@ -32,13 +33,22 @@ pub fn run(
             {
                 match event.kind {
                     EventKind::Create(_) => {
-                        let _ = db.create(uri);
+                        if let Err(e) = db.create(uri) {
+                            warn!("db `create` error ({})", e);
+                        }
                     }
                     EventKind::Modify(_) => {
-                        let _ = db.modify(uri);
+                        if let Err(e) = db.modify(uri) {
+                            warn!("db `modify` error ({})", e);
+                        }
                     }
                     EventKind::Remove(_) => {
-                        db.remove(uri);
+                        if db.remove(uri).is_none() {
+                            warn!(
+                                "db `remove` error (file {} doesn't exist)",
+                                uri.to_string_lossy()
+                            );
+                        }
                     }
                     _ => (),
                 }

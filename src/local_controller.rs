@@ -21,8 +21,8 @@ use crate::{
     },
     net::{
         request::{
-            LocalRequestKind, ParsedRequest, PlayerSubTarget, RawDbRequest, RawPlayerRequest,
-            SubscribeArgs, UnsubscribeArgs,
+            LocalRequestKind, PlayerSubTarget, RawDbRequest, RawPlayerRequest, SubscribeArgs,
+            UnsubscribeArgs,
         },
         response::{EventNotif, Response},
     },
@@ -32,8 +32,6 @@ use crate::{
         request::{PlayerRequest, PlayerRequestKind},
     },
 };
-
-// TODO: refactor into shorter functions
 
 async fn handle_request(
     bytes: Bytes,
@@ -57,6 +55,7 @@ async fn handle_request(
                     let kind = DbRequestKind::Subscribe(args);
                     DbRequest::new(kind, respond_to)
                 }
+                // TODO: should error out if this client hasn't subbed
                 RawDbRequest::Unsubscribe(target) => {
                     let args = UnsubscribeArgs::new(target, *addr);
                     let kind = DbRequestKind::Unsubscribe(args);
@@ -74,6 +73,7 @@ async fn handle_request(
                     PlayerRequest::new(kind, respond_to)
                 }
                 RawPlayerRequest::Unsubscribe(target) => {
+                    // TODO: should error out if this client hasn't subbed
                     let args = UnsubscribeArgs::new(target, *addr);
                     let kind = PlayerRequestKind::Unsubscribe(args);
                     PlayerRequest::new(kind, respond_to)

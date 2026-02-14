@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use serde_json::Value;
-use std::{collections::HashMap, path::PathBuf};
-use tokio::sync::oneshot;
+use std::{collections::HashMap, net::SocketAddr, path::PathBuf};
+use tokio::sync::{mpsc as tokio_chan, oneshot};
 
 use crate::{
     db::{
@@ -15,7 +15,7 @@ use crate::{
             DbSubTarget, RawDbRequest, RawMetadataArgs, RawSelectArgs, SubscribeArgs,
             UnsubscribeArgs,
         },
-        response::Response,
+        response::{EventNotif, Response},
     },
 };
 
@@ -175,6 +175,21 @@ impl Db {
 }
 
 impl SharedDb {
+    pub fn add_subscriber(
+        &self,
+        target: DbSubTarget,
+        addr: SocketAddr,
+        send_to: tokio_chan::UnboundedSender<EventNotif>,
+    ) {
+        let mut db = self.inner.write().unwrap();
+        db.add_subscriber(target, addr, send_to);
+    }
+
+    pub fn remove_subscriber(&self, target: DbSubTarget, addr: SocketAddr) {
+        let mut db = self.inner.write().unwrap();
+        db.remove_subscriber(target, addr);
+    }
+
     pub fn metadata(&self, args: ParsedMetadataArgs) -> Response {
         let db = self.inner.read().unwrap();
         db.metadata(args)

@@ -1,28 +1,43 @@
 use anyhow::Result;
 use globset::GlobSet;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use serde::Serialize;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
+    net::SocketAddr,
     path::{Path, PathBuf},
     sync::{Arc, RwLock},
 };
+use tokio::sync::mpsc as tokio_chan;
 
-use crate::db::{fs_utils, fs_watcher, song_metadata::SongMetadata};
+use crate::{
+    db::{fs_utils, fs_watcher, song_metadata::SongMetadata},
+    net::{request::DbSubTarget, response::EventNotif},
+};
 
 type Table = BTreeMap<PathBuf, SongMetadata>;
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+pub enum DbEvent {
+    Create { uri: PathBuf },
+    Modify { uri: PathBuf },
+    Remove { uri: PathBuf },
+}
 
 /// TODO:
 /// - keep m3u playlists
 /// - allow relative paths in requests
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Db {
     pub table: Table,
     music_root: PathBuf,
+    subscribers: HashMap<(DbSubTarget, SocketAddr), tokio_chan::UnboundedSender<EventNotif>>,
 }
 
 pub struct SharedDb {
     pub inner: Arc<RwLock<Db>>,
-    pub music_root: PathBuf,
+    music_root: PathBuf,
 }
 
 impl Db {
@@ -34,8 +49,35 @@ impl Db {
         let uris = fs_utils::walk_dir(&music_root, ignore_glob_set.clone(), allowed_exts)?;
         let table = Self::init_table(uris);
         let music_root = music_root.as_ref().to_path_buf();
+        let subscribers = HashMap::new();
 
-        Ok(Self { table, music_root })
+        Ok(Self {
+            table,
+            music_root,
+            subscribers,
+        })
+    }
+
+    pub fn add_subscriber(
+        &mut self,
+        target: DbSubTarget,
+        addr: SocketAddr,
+        send_to: tokio_chan::UnboundedSender<EventNotif>,
+    ) {
+        self.subscribers.insert((target, addr), send_to);
+    }
+
+    pub fn remove_subscriber(&mut self, target: DbSubTarget, addr: SocketAddr) {
+        self.subscribers.remove(&(target, addr));
+    }
+
+    fn notify_subscribers(&self, target: DbSubTarget, event: DbEvent) {
+        for (sub, send_to) in self.subscribers.iter() {
+            let (sub_target, _) = sub;
+            if *sub_target == target {
+                let _ = send_to.send(EventNotif::new(event.clone()));
+            }
+        }
     }
 
     fn create(&mut self, uri: impl AsRef<Path> + Into<PathBuf>, data: SongMetadata) {
@@ -48,8 +90,8 @@ impl Db {
         }
     }
 
-    fn remove(&mut self, uri: impl AsRef<Path>) {
-        self.table.remove(uri.as_ref());
+    fn remove(&mut self, uri: impl AsRef<Path>) -> Option<()> {
+        self.table.remove(uri.as_ref()).map(|_| ())
     }
 
     fn init_table(uris: impl IntoParallelIterator<Item = PathBuf>) -> Table {
@@ -91,21 +133,26 @@ impl SharedDb {
     pub fn create(&mut self, uri: impl AsRef<Path> + Into<PathBuf>) -> Result<()> {
         let data = SongMetadata::try_new(&uri)?;
         let mut db = self.inner.write().unwrap();
-        db.create(uri, data);
+        db.create(uri.as_ref(), data);
+        db.notify_subscribers(DbSubTarget::Update, DbEvent::Create { uri: uri.into() });
 
         Ok(())
     }
 
-    pub fn modify(&mut self, uri: impl AsRef<Path>) -> Result<()> {
+    pub fn modify(&mut self, uri: impl AsRef<Path> + Into<PathBuf>) -> Result<()> {
         let data = SongMetadata::try_new(&uri)?;
         let mut db = self.inner.write().unwrap();
-        db.modify(uri, data);
+        db.modify(uri.as_ref(), data);
+        db.notify_subscribers(DbSubTarget::Update, DbEvent::Modify { uri: uri.into() });
 
         Ok(())
     }
 
-    pub fn remove(&mut self, uri: impl AsRef<Path>) {
+    pub fn remove(&mut self, uri: impl AsRef<Path> + Into<PathBuf>) -> Option<()> {
         let mut db = self.inner.write().unwrap();
-        db.remove(uri);
+        db.remove(uri.as_ref())?;
+        db.notify_subscribers(DbSubTarget::Update, DbEvent::Remove { uri: uri.into() });
+
+        Some(())
     }
 }

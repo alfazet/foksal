@@ -11,8 +11,6 @@ use crate::{
     },
 };
 
-pub trait Request {}
-
 pub trait RawDbRequestArgs {}
 
 pub trait RawPlayerRequestArgs {}
@@ -28,6 +26,18 @@ pub struct SubscribeArgs<T: SubTarget> {
 pub struct UnsubscribeArgs<T: SubTarget> {
     pub target: T,
     pub addr: SocketAddr,
+}
+
+#[derive(Copy, Clone, Deserialize, Eq, Hash, PartialEq)]
+#[serde(tag = "to", rename_all = "snake_case")]
+pub enum DbSubTarget {
+    Update,
+}
+
+#[derive(Copy, Clone, Deserialize, Eq, Hash, PartialEq)]
+#[serde(tag = "to", rename_all = "snake_case")]
+pub enum PlayerSubTarget {
+    Queue,
 }
 
 #[derive(Deserialize)]
@@ -73,18 +83,6 @@ pub enum RawPlayerRequest {
     Prev,
 }
 
-#[derive(Copy, Clone, Deserialize, Eq, Hash, PartialEq)]
-#[serde(tag = "to", rename_all = "snake_case")]
-pub enum DbSubTarget {
-    Update,
-}
-
-#[derive(Copy, Clone, Deserialize, Eq, Hash, PartialEq)]
-#[serde(tag = "to", rename_all = "snake_case")]
-pub enum PlayerSubTarget {
-    Queue,
-}
-
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RawFileRequest {
@@ -105,33 +103,12 @@ pub enum RemoteRequestKind {
     FileRequest(RawFileRequest),
 }
 
-pub struct ParsedRequest<T: Request> {
-    pub request: T,
-    pub respond_to: oneshot::Sender<Response>,
-}
+impl SubTarget for DbSubTarget {}
 
-impl Request for RawDbRequest {}
-
-impl Request for RawPlayerRequest {}
-
-impl<T> ParsedRequest<T>
-where
-    T: Request,
-{
-    pub fn new(request: T, respond_to: oneshot::Sender<Response>) -> Self {
-        Self {
-            request,
-            respond_to,
-        }
-    }
-}
+impl SubTarget for PlayerSubTarget {}
 
 impl RawDbRequestArgs for RawMetadataArgs {}
 
 impl RawDbRequestArgs for RawSelectArgs {}
 
 impl RawPlayerRequestArgs for RawAddToQueueArgs {}
-
-impl SubTarget for DbSubTarget {}
-
-impl SubTarget for PlayerSubTarget {}

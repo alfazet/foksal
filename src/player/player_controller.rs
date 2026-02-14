@@ -11,8 +11,8 @@ use uuid::Uuid;
 use crate::{
     net::{
         request::{
-            ParsedRequest, RawAddToQueueArgs, RawPlayerRequest, RawPlayerRequestArgs,
-            SubscribeArgs, UnsubscribeArgs,
+            RawAddToQueueArgs, RawPlayerRequest, RawPlayerRequestArgs, SubscribeArgs,
+            UnsubscribeArgs,
         },
         response::Response,
     },

@@ -75,7 +75,7 @@ impl Response {
 }
 
 impl EventNotif {
-    pub fn from_player_event(event: PlayerEvent) -> Self {
+    pub fn new(event: impl Serialize) -> Self {
         Self(serde_json::to_value(event).unwrap())
     }
 

@@ -54,7 +54,7 @@ impl Player {
         for (sub, send_to) in self.subscribers.iter() {
             let (sub_target, _) = sub;
             if *sub_target == target {
-                let _ = send_to.send(EventNotif::from_player_event(event.clone()));
+                let _ = send_to.send(EventNotif::new(event.clone()));
             }
         }
     }

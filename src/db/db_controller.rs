@@ -10,7 +10,7 @@ use crate::{
     },
     net::{
         core::JsonObject,
-        request::{ParsedRequest, RawDbRequest, RawDbRequestArgs, SubscribeArgs, UnsubscribeArgs},
+        request::{RawDbRequest, RawDbRequestArgs, SubscribeArgs, UnsubscribeArgs},
         response::Response,
     },
 };
@@ -47,11 +47,11 @@ fn run(db: SharedDb, mut rx_db_request: tokio_chan::UnboundedReceiver<DbRequest>
                 addr,
                 send_to,
             }) => {
-                println!("got a subscribe request from {:?}", addr);
+                db.add_subscriber(target, addr, send_to);
                 Response::new_ok()
             }
             DbRequestKind::Unsubscribe(UnsubscribeArgs { target, addr }) => {
-                println!("got an unsubscribe request from {:?}", addr);
+                db.remove_subscriber(target, addr);
                 Response::new_ok()
             }
         };
