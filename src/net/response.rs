@@ -17,8 +17,8 @@ pub struct Response(JsonObject);
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct EventNotif {
-    value: Value,
-    subscriber: SocketAddr,
+    pub value: Value,
+    pub subscriber: SocketAddr,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

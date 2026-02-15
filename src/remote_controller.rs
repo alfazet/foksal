@@ -87,7 +87,9 @@ async fn handle_proxy(
     let tx_msg_clone = tx_msg.clone();
     tokio::spawn(async move {
         while let Some(notif) = rx_event.recv().await {
-            if let Ok(bytes) = notif.to_bytes_remote() {
+            let client = notif.subscriber;
+            let notif = RemoteResponse::new(RemoteResponseInner::EventNotif(notif), Some(client));
+            if let Ok(bytes) = notif.to_bytes() {
                 let _ = tx_msg_clone.send(WsMessage::Binary(bytes));
             }
         }
