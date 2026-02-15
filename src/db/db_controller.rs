@@ -29,7 +29,6 @@ where
     }
 }
 
-// TODO: maybe make it so that only the "expensive" requests are blocking
 fn run(db: SharedDb, mut rx_db_request: tokio_chan::UnboundedReceiver<DbRequest>) {
     while let Some(DbRequest { kind, respond_to }) = rx_db_request.blocking_recv() {
         let response = match kind {

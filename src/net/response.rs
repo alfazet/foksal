@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::{
     fmt::{self, Display, Formatter},
+    net::SocketAddr,
     path::PathBuf,
 };
 use tokio::sync::oneshot;
@@ -15,7 +16,27 @@ use crate::{net::core::JsonObject, player::core::PlayerEvent};
 pub struct Response(JsonObject);
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct EventNotif(Value);
+pub struct EventNotif {
+    value: Value,
+    subscriber: SocketAddr,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum RemoteResponseInner {
+    Response(Response),
+    EventNotif(EventNotif),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RemoteResponse {
+    inner: RemoteResponseInner,
+    client: Option<SocketAddr>, // option, because the request might be unparseable
+}
+
+pub enum RemoteResponseKind {
+    Response(RemoteResponse),
+    // Chunk(Vec< whatever the type of samples will be>),
+}
 
 impl Default for Response {
     fn default() -> Self {
@@ -75,12 +96,40 @@ impl Response {
 }
 
 impl EventNotif {
-    pub fn new(event: impl Serialize) -> Self {
-        Self(serde_json::to_value(event).unwrap())
+    pub fn new(event: impl Serialize, subscriber: SocketAddr) -> Self {
+        Self {
+            value: serde_json::to_value(event).unwrap(),
+            subscriber,
+        }
+    }
+
+    pub fn to_bytes_local(&self) -> Result<Bytes> {
+        let s = serde_json::to_string(&self.value)?; // TODO: use to_vec()?
+        Ok(s.as_bytes().to_vec().into())
+    }
+
+    pub fn to_bytes_remote(&self) -> Result<Bytes> {
+        let s = serde_json::to_string(&self)?;
+        Ok(s.as_bytes().to_vec().into())
+    }
+}
+
+impl RemoteResponse {
+    pub fn new(inner: RemoteResponseInner, client: Option<SocketAddr>) -> Self {
+        Self { inner, client }
     }
 
     pub fn to_bytes(&self) -> Result<Bytes> {
-        let s = serde_json::to_string(&self.0)?;
+        let s = serde_json::to_string(&self)?;
         Ok(s.as_bytes().to_vec().into())
+    }
+}
+
+impl RemoteResponseKind {
+    pub fn to_bytes(&self) -> Result<Bytes> {
+        match self {
+            Self::Response(response) => response.to_bytes(),
+            // Self::Chunk => add some bytes to the beginning as a marker
+        }
     }
 }

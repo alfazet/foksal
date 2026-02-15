@@ -7,6 +7,7 @@ mod net;
 mod player;
 
 mod local_controller;
+mod remote_controller;
 
 use anyhow::{Result, bail};
 use clap::Parser;
@@ -21,8 +22,8 @@ use tracing::error;
 
 use crate::{
     config::{
-        CliArgs, CliConfig, HeadlessArgs, HeadlessConfig, LocalArgs, LocalConfig, Mode, ProxyArgs,
-        ProxyConfig,
+        CliArgs, CliConfig, LocalArgs, LocalConfig, Mode, ProxyArgs, ProxyConfig, RemoteArgs,
+        RemoteConfig,
     },
     db::{
         core::{Db, SharedDb},
@@ -60,7 +61,7 @@ async fn local_main(args: LocalArgs) -> Result<()> {
     // TODO: init the decoder (should be part of DB)
 
     let c_token = CancellationToken::new();
-    let local_controller = local_controller::start(local_port, db, player, c_token.clone());
+    let local_controller = local_controller::spawn(local_port, db, player, c_token.clone());
     tokio::select! {
         _ = signal::ctrl_c() => (),
         _ = c_token.cancelled() => (),
@@ -68,6 +69,27 @@ async fn local_main(args: LocalArgs) -> Result<()> {
     c_token.cancel();
 
     local_controller.await?
+}
+
+async fn remote_main(args: RemoteArgs) -> Result<()> {
+    let config = RemoteConfig::merge_with_cli(args);
+    let RemoteConfig {
+        local_port,
+        music_root,
+        ignore_glob_set,
+        allowed_exts,
+    } = config;
+    let db = init_db(&music_root, ignore_glob_set, allowed_exts)?;
+
+    let c_token = CancellationToken::new();
+    let remote_controller = remote_controller::spawn(local_port, db, c_token.clone());
+    tokio::select! {
+        _ = signal::ctrl_c() => (),
+        _ = c_token.cancelled() => (),
+    }
+    c_token.cancel();
+
+    remote_controller.await?
 }
 
 #[tokio::main]
@@ -83,6 +105,7 @@ async fn main() -> Result<()> {
 
     match mode {
         Mode::Local(args) => local_main(args).await,
+        Mode::Remote(args) => remote_main(args).await,
         _ => todo!(),
     }
 }

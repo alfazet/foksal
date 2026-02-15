@@ -52,9 +52,9 @@ impl Player {
 
     fn notify_subscribers(&self, target: PlayerSubTarget, event: PlayerEvent) {
         for (sub, send_to) in self.subscribers.iter() {
-            let (sub_target, _) = sub;
+            let (sub_target, sub_addr) = sub;
             if *sub_target == target {
-                let _ = send_to.send(EventNotif::new(event.clone()));
+                let _ = send_to.send(EventNotif::new(event.clone(), *sub_addr));
             }
         }
     }

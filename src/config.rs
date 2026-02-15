@@ -20,10 +20,10 @@ lazy_static! {
 pub enum Mode {
     /// local mode (use this pc's audio and mounted filesystem)
     Local(LocalArgs),
-    /// proxy mode (requires connecting to a headless instance)
+    /// proxy mode (requires connecting to a remore instance)
     Proxy(ProxyArgs),
-    /// headless mode (can't play audio, needs to be paired with a proxy)
-    Headless(HeadlessArgs),
+    /// remote mode (can't play audio, needs to be paired with a proxy)
+    Remote(RemoteArgs),
 }
 
 #[derive(Parser)]
@@ -60,25 +60,25 @@ pub struct LocalConfig {
 
 #[derive(Args)]
 pub struct ProxyArgs {
-    /// address of the headless instance
+    /// address of the remote instance
     #[arg(short = 'a', long = "addr")]
-    headless_addr: String,
-    /// port that the headless instance will listen on
+    remote_addr: String,
+    /// port that the remote instance will listen on
     #[arg(long = "hp")]
-    headless_port: u16,
+    remote_port: u16,
     /// port on localhost for clients to connect to
     #[arg(long = "lp")]
     local_port: Option<u16>,
 }
 
 pub struct ProxyConfig {
-    pub headless_addr: String,
-    pub headless_port: u16,
+    pub remote_addr: String,
+    pub remote_port: u16,
     pub local_port: u16,
 }
 
 #[derive(Args)]
-pub struct HeadlessArgs {
+pub struct RemoteArgs {
     /// port for proxy instances to connect to
     #[arg(short = 'p', long = "port")]
     port: Option<u16>,
@@ -88,7 +88,7 @@ pub struct HeadlessArgs {
 }
 
 // TODO: refactor music_root, ignore_glob_set and allowed_exts into some FsConfig in db/fs module
-pub struct HeadlessConfig {
+pub struct RemoteConfig {
     pub local_port: u16,
     pub music_root: PathBuf,
     pub ignore_glob_set: GlobSet,
@@ -119,15 +119,15 @@ impl LocalConfig {
 impl ProxyConfig {
     pub fn merge_with_cli(cli_args: ProxyArgs) -> Self {
         Self {
-            headless_addr: cli_args.headless_addr,
-            headless_port: cli_args.headless_port,
+            remote_addr: cli_args.remote_addr,
+            remote_port: cli_args.remote_port,
             local_port: cli_args.local_port.unwrap_or(DEFAULT_PORT),
         }
     }
 }
 
-impl HeadlessConfig {
-    pub fn merge_with_cli(cli_args: HeadlessArgs) -> Self {
+impl RemoteConfig {
+    pub fn merge_with_cli(cli_args: RemoteArgs) -> Self {
         Self {
             local_port: cli_args.port.unwrap_or(DEFAULT_PORT),
             music_root: cli_args.music_root.unwrap_or(DEFAULT_MUSIC_ROOT.into()),

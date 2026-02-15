@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, path::PathBuf};
 use tokio::sync::{mpsc as tokio_chan, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
@@ -28,7 +28,7 @@ pub struct UnsubscribeArgs<T: SubTarget> {
     pub addr: SocketAddr,
 }
 
-#[derive(Copy, Clone, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Copy, Clone, Eq, Hash, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "to", rename_all = "snake_case")]
 pub enum DbSubTarget {
     Update,
@@ -40,14 +40,14 @@ pub enum PlayerSubTarget {
     Queue,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawMetadataArgs {
     pub uris: Vec<PathBuf>,
     pub tags: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawSelectArgs {
     pub filters: Vec<RawFilter>,
@@ -61,7 +61,7 @@ pub struct RawAddToQueueArgs {
     pub pos: Option<usize>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RawDbRequest {
     Subscribe(DbSubTarget),
@@ -83,11 +83,11 @@ pub enum RawPlayerRequest {
     Prev,
 }
 
-#[derive(Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum RawFileRequest {
-    FetchChunk(PathBuf), // TODO: change to RawFetchChunkArgs, timestamps too
-}
+// #[derive(Deserialize)]
+// #[serde(tag = "kind", rename_all = "snake_case")]
+// pub enum RawFileRequest {
+//     FetchChunk(RawFetchChunkArgs),
+// }
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -96,11 +96,13 @@ pub enum LocalRequestKind {
     PlayerRequest(RawPlayerRequest),
 }
 
-#[derive(Deserialize)]
-#[serde(untagged)]
+#[derive(Deserialize, Serialize)]
 pub enum RemoteRequestKind {
-    DbRequest(RawDbRequest),
-    FileRequest(RawFileRequest),
+    DbRequest {
+        request: RawDbRequest,
+        client: SocketAddr,
+    },
+    // FileRequest(RawFileRequest),
 }
 
 impl SubTarget for DbSubTarget {}
