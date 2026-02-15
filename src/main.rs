@@ -7,6 +7,7 @@ mod net;
 mod player;
 
 mod local_controller;
+mod proxy_controller;
 mod remote_controller;
 
 use anyhow::{Result, bail};
@@ -44,8 +45,8 @@ fn init_db(
     Ok(db)
 }
 
-fn init_player(music_root: impl Into<PathBuf>) -> Player {
-    Player::new(music_root)
+fn init_player() -> Player {
+    Player::new()
 }
 
 async fn local_main(args: LocalArgs) -> Result<()> {
@@ -57,7 +58,7 @@ async fn local_main(args: LocalArgs) -> Result<()> {
         allowed_exts,
     } = config;
     let db = init_db(&music_root, ignore_glob_set, allowed_exts)?;
-    let player = init_player(&music_root);
+    let player = init_player();
     // TODO: init the decoder (should be part of DB)
 
     let c_token = CancellationToken::new();
@@ -92,6 +93,27 @@ async fn remote_main(args: RemoteArgs) -> Result<()> {
     remote_controller.await?
 }
 
+async fn proxy_main(args: ProxyArgs) -> Result<()> {
+    let config = ProxyConfig::merge_with_cli(args);
+    let ProxyConfig {
+        remote_addr,
+        remote_port,
+        local_port,
+    } = config;
+    let ws_stream = proxy_controller::connect_to_remote(remote_addr, remote_port).await?;
+    let player = init_player();
+
+    let c_token = CancellationToken::new();
+    let proxy_controller = proxy_controller::spawn(ws_stream, local_port, player, c_token.clone());
+    tokio::select! {
+        _ = signal::ctrl_c() => (),
+        _ = c_token.cancelled() => (),
+    }
+    c_token.cancel();
+
+    proxy_controller.await?
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli_args = CliArgs::parse();
@@ -106,6 +128,6 @@ async fn main() -> Result<()> {
     match mode {
         Mode::Local(args) => local_main(args).await,
         Mode::Remote(args) => remote_main(args).await,
-        _ => todo!(),
+        Mode::Proxy(args) => proxy_main(args).await,
     }
 }

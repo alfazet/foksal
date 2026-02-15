@@ -1,3 +1,4 @@
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, path::PathBuf};
 use tokio::sync::{mpsc as tokio_chan, oneshot};
@@ -91,13 +92,14 @@ pub enum RawPlayerRequest {
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-pub enum LocalRequestKind {
+pub enum LocalRequest {
     DbRequest(RawDbRequest),
     PlayerRequest(RawPlayerRequest),
 }
 
 #[derive(Deserialize, Serialize)]
-pub enum RemoteRequestKind {
+#[serde(untagged)]
+pub enum RemoteRequest {
     DbRequest {
         request: RawDbRequest,
         client: SocketAddr,
@@ -114,3 +116,10 @@ impl RawDbRequestArgs for RawMetadataArgs {}
 impl RawDbRequestArgs for RawSelectArgs {}
 
 impl RawPlayerRequestArgs for RawAddToQueueArgs {}
+
+impl RemoteRequest {
+    pub fn to_bytes(&self) -> Result<Bytes> {
+        let s = serde_json::to_string(&self)?;
+        Ok(s.as_bytes().to_vec().into())
+    }
+}

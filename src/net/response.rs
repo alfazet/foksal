@@ -29,10 +29,12 @@ pub enum RemoteResponseInner {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RemoteResponse {
-    inner: RemoteResponseInner,
-    client: Option<SocketAddr>, // option, because the request might be unparseable
+    pub inner: RemoteResponseInner,
+    pub client: Option<SocketAddr>, // option, because the request might be unparseable
 }
 
+/// for Chunk responses, the first byte will be 0x00
+/// otherwise, no header
 pub enum RemoteResponseKind {
     Response(RemoteResponse),
     // Chunk(Vec< whatever the type of samples will be>),

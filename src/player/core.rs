@@ -19,15 +19,13 @@ pub enum PlayerEvent {
 }
 
 pub struct Player {
-    music_root: PathBuf,
     queue: Queue,
     subscribers: HashMap<(PlayerSubTarget, SocketAddr), tokio_chan::UnboundedSender<EventNotif>>,
 }
 
 impl Player {
-    pub fn new(music_root: impl Into<PathBuf>) -> Self {
+    pub fn new() -> Self {
         Self {
-            music_root: music_root.into(),
             queue: Queue::new(),
             subscribers: HashMap::new(),
         }

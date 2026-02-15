@@ -21,7 +21,7 @@ use crate::{
     },
     net::{
         request::{
-            LocalRequestKind, PlayerSubTarget, RawDbRequest, RawPlayerRequest, SubscribeArgs,
+            LocalRequest, PlayerSubTarget, RawDbRequest, RawPlayerRequest, SubscribeArgs,
             UnsubscribeArgs,
         },
         response::{EventNotif, Response},
@@ -40,15 +40,14 @@ async fn handle_request(
     tx_player_request: &tokio_chan::UnboundedSender<PlayerRequest>,
     tx_event: &tokio_chan::UnboundedSender<EventNotif>,
 ) -> Result<Response> {
-    let request_kind: LocalRequestKind =
-        match serde_json::from_slice(&bytes).map_err(|e| anyhow!(e)) {
-            Ok(request_kind) => request_kind,
-            Err(e) => return Ok(Response::new_err(format!("invalid request ({})", e))),
-        };
+    let request_kind: LocalRequest = match serde_json::from_slice(&bytes).map_err(|e| anyhow!(e)) {
+        Ok(request_kind) => request_kind,
+        Err(e) => return Ok(Response::new_err(format!("invalid request ({})", e))),
+    };
     let (respond_to, rx_response) = oneshot::channel();
 
     match request_kind {
-        LocalRequestKind::DbRequest(db_request) => {
+        LocalRequest::DbRequest(db_request) => {
             let request = match db_request {
                 RawDbRequest::Subscribe(target) => {
                     let args = SubscribeArgs::new(target, *addr, tx_event.clone());
@@ -64,7 +63,7 @@ async fn handle_request(
             };
             tx_db_request.send(request)?;
         }
-        LocalRequestKind::PlayerRequest(player_request) => {
+        LocalRequest::PlayerRequest(player_request) => {
             let request = match player_request {
                 RawPlayerRequest::Subscribe(target) => {
                     let args = SubscribeArgs::new(target, *addr, tx_event.clone());

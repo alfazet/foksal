@@ -1,9 +1,6 @@
 use anyhow::{Result, anyhow, bail};
 use futures_util::{SinkExt, StreamExt};
-use std::{
-    collections::HashMap,
-    net::SocketAddr,
-};
+use std::{collections::HashMap, net::SocketAddr};
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::{mpsc as tokio_chan, oneshot},
@@ -23,7 +20,7 @@ use crate::{
         request::{DbRequest, DbRequestKind},
     },
     net::{
-        request::{RawDbRequest, RemoteRequestKind, SubscribeArgs, UnsubscribeArgs},
+        request::{RawDbRequest, RemoteRequest, SubscribeArgs, UnsubscribeArgs},
         response::{EventNotif, RemoteResponse, RemoteResponseInner, RemoteResponseKind, Response},
     },
 };
@@ -33,21 +30,20 @@ async fn handle_request(
     tx_db_request: &tokio_chan::UnboundedSender<DbRequest>,
     tx_event: &tokio_chan::UnboundedSender<EventNotif>,
 ) -> Result<RemoteResponseKind> {
-    let request_kind: RemoteRequestKind =
-        match serde_json::from_slice(&bytes).map_err(|e| anyhow!(e)) {
-            Ok(request_kind) => request_kind,
-            Err(e) => {
-                let response = Response::new_err(format!("invalid request ({})", e));
-                let inner = RemoteResponseInner::Response(response);
-                let response = RemoteResponse::new(inner, None);
+    let request_kind: RemoteRequest = match serde_json::from_slice(&bytes).map_err(|e| anyhow!(e)) {
+        Ok(request_kind) => request_kind,
+        Err(e) => {
+            let response = Response::new_err(format!("invalid request ({})", e));
+            let inner = RemoteResponseInner::Response(response);
+            let response = RemoteResponse::new(inner, None);
 
-                return Ok(RemoteResponseKind::Response(response));
-            }
-        };
+            return Ok(RemoteResponseKind::Response(response));
+        }
+    };
     let (respond_to, rx_response) = oneshot::channel();
 
     match request_kind {
-        RemoteRequestKind::DbRequest { request, client } => {
+        RemoteRequest::DbRequest { request, client } => {
             let request = match request {
                 RawDbRequest::Subscribe(target) => {
                     let args = SubscribeArgs::new(target, client, tx_event.clone());
