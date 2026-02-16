@@ -109,7 +109,7 @@ async fn handle_client(
     let tx_msg_clone = tx_msg.clone();
     tokio::spawn(async move {
         while let Some(notif) = rx_event.recv().await {
-            if let Ok(bytes) = notif.to_bytes_local() {
+            if let Ok(bytes) = notif.to_bytes() {
                 let _ = tx_msg_clone.send(WsMessage::Binary(bytes));
             }
         }

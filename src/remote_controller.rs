@@ -37,7 +37,7 @@ async fn handle_request(
             let inner = RemoteResponseInner::Response(response);
             let response = RemoteResponse::new(inner, None);
 
-            return Ok(RemoteResponseKind::Response(response));
+            return Ok(RemoteResponseKind::TextResponse(response));
         }
     };
     let (respond_to, rx_response) = oneshot::channel();
@@ -61,8 +61,9 @@ async fn handle_request(
             let inner = RemoteResponseInner::Response(rx_response.await?);
             let response = RemoteResponse::new(inner, Some(client));
 
-            Ok(RemoteResponseKind::Response(response))
+            Ok(RemoteResponseKind::TextResponse(response))
         }
+        _ => todo!(),
     }
 }
 
@@ -89,8 +90,8 @@ async fn handle_proxy(
         while let Some(notif) = rx_event.recv().await {
             let client = notif.subscriber;
             let notif = RemoteResponse::new(RemoteResponseInner::EventNotif(notif), Some(client));
-            if let Ok(bytes) = notif.to_bytes() {
-                let _ = tx_msg_clone.send(WsMessage::Binary(bytes));
+            if let Ok(text) = notif.to_text() {
+                let _ = tx_msg_clone.send(WsMessage::Text(text));
             }
         }
     });
@@ -101,15 +102,16 @@ async fn handle_proxy(
                 match msg {
                     Some(msg) => match msg {
                         Ok(WsMessage::Binary(bytes)) => {
-                            let response = handle_request(bytes, &tx_db_request, &tx_event).await?.to_bytes()?;
-                            let _ = tx_msg.send(WsMessage::Binary(response));
-                        }
-                        Ok(WsMessage::Ping(data)) => {
-                            let _ = tx_msg.send(WsMessage::Pong(data));
-                        }
-                        Ok(WsMessage::Close(_)) => {
-                            info!("connection closed by the client");
-                            break Ok(());
+                            let response = handle_request(bytes, &tx_db_request, &tx_event).await?;
+                            let msg = match response {
+                                RemoteResponseKind::TextResponse(response) => {
+                                    WsMessage::Text(response.to_text()?)
+                                }
+                                RemoteResponseKind::BinaryResponse(response) => {
+                                    WsMessage::Binary(response.into())
+                                }
+                            };
+                            let _ = tx_msg.send(msg);
                         }
                         Err(e) => {
                             break Err(anyhow!(e));

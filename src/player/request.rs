@@ -1,13 +1,15 @@
 use anyhow::{Result, bail};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{net::SocketAddr, path::PathBuf};
 use tokio::sync::{mpsc as tokio_chan, oneshot};
+use tokio_tungstenite::tungstenite::Bytes;
 
 use crate::{
     net::{
         request::{
-            PlayerSubTarget, RawAddToQueueArgs, RawPlayerRequest, SubTarget, SubscribeArgs,
-            UnsubscribeArgs,
+            PlayerSubTarget, RawAddToQueueArgs, RawFileRequest, RawPlayerRequest, SubTarget,
+            SubscribeArgs, UnsubscribeArgs,
         },
         response::{EventNotif, Response},
     },
@@ -30,6 +32,15 @@ pub enum PlayerRequestKind {
 pub struct PlayerRequest {
     pub kind: PlayerRequestKind,
     pub respond_to: oneshot::Sender<Response>,
+}
+
+pub enum FileRequestKind {
+    Raw(RawFileRequest),
+}
+
+pub struct FileRequest {
+    pub kind: FileRequestKind,
+    pub respond_to: oneshot::Sender<Bytes>,
 }
 
 impl<T: SubTarget> SubscribeArgs<T> {

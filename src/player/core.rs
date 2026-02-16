@@ -12,6 +12,9 @@ use crate::{
     player::{queue::Queue, request::ParsedAddToQueueArgs},
 };
 
+type PlayerSubscribersMap =
+    HashMap<(PlayerSubTarget, SocketAddr), tokio_chan::UnboundedSender<EventNotif>>;
+
 #[derive(Clone, Serialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum PlayerEvent {
@@ -20,7 +23,7 @@ pub enum PlayerEvent {
 
 pub struct Player {
     queue: Queue,
-    subscribers: HashMap<(PlayerSubTarget, SocketAddr), tokio_chan::UnboundedSender<EventNotif>>,
+    subscribers: PlayerSubscribersMap,
 }
 
 impl Player {

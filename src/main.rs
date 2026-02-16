@@ -59,7 +59,6 @@ async fn local_main(args: LocalArgs) -> Result<()> {
     } = config;
     let db = init_db(&music_root, ignore_glob_set, allowed_exts)?;
     let player = init_player();
-    // TODO: init the decoder (should be part of DB)
 
     let c_token = CancellationToken::new();
     let local_controller = local_controller::spawn(local_port, db, player, c_token.clone());

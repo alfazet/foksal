@@ -10,7 +10,7 @@ use tracing::warn;
 
 use crate::db::{core::SharedDb, fs_utils};
 
-const POLL_TIMEOUT: u64 = 2; // in seconds
+const POLL_TIMEOUT: u64 = 1; // in seconds
 
 pub fn run(
     mut db: SharedDb,

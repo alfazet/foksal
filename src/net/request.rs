@@ -84,11 +84,12 @@ pub enum RawPlayerRequest {
     Prev,
 }
 
-// #[derive(Deserialize)]
-// #[serde(tag = "kind", rename_all = "snake_case")]
-// pub enum RawFileRequest {
-//     FetchChunk(RawFetchChunkArgs),
-// }
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RawFileRequest {
+    PrepareFile(PathBuf),
+    GetChunk { uri: PathBuf, start: u64, end: u64 },
+}
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -104,7 +105,7 @@ pub enum RemoteRequest {
         request: RawDbRequest,
         client: SocketAddr,
     },
-    // FileRequest(RawFileRequest),
+    FileRequest(RawFileRequest),
 }
 
 impl SubTarget for DbSubTarget {}

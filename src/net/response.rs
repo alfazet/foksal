@@ -8,7 +8,7 @@ use std::{
     path::PathBuf,
 };
 use tokio::sync::oneshot;
-use tokio_tungstenite::tungstenite::Bytes;
+use tokio_tungstenite::tungstenite::{Bytes, Utf8Bytes};
 
 use crate::{net::core::JsonObject, player::core::PlayerEvent};
 
@@ -36,8 +36,8 @@ pub struct RemoteResponse {
 /// for Chunk responses, the first byte will be 0x00
 /// otherwise, no header
 pub enum RemoteResponseKind {
-    Response(RemoteResponse),
-    // Chunk(Vec< whatever the type of samples will be>),
+    TextResponse(RemoteResponse),
+    BinaryResponse(Vec<u8>),
 }
 
 impl Default for Response {
@@ -105,14 +105,14 @@ impl EventNotif {
         }
     }
 
-    pub fn to_bytes_local(&self) -> Result<Bytes> {
+    pub fn to_bytes(&self) -> Result<Bytes> {
         let s = serde_json::to_string(&self.value)?; // TODO: use to_vec()?
         Ok(s.as_bytes().to_vec().into())
     }
 
-    pub fn to_bytes_remote(&self) -> Result<Bytes> {
-        let s = serde_json::to_string(&self)?;
-        Ok(s.as_bytes().to_vec().into())
+    pub fn to_text(&self) -> Result<Utf8Bytes> {
+        let s = serde_json::to_string(&self.value)?;
+        Ok(s.into())
     }
 }
 
@@ -125,13 +125,9 @@ impl RemoteResponse {
         let s = serde_json::to_string(&self)?;
         Ok(s.as_bytes().to_vec().into())
     }
-}
 
-impl RemoteResponseKind {
-    pub fn to_bytes(&self) -> Result<Bytes> {
-        match self {
-            Self::Response(response) => response.to_bytes(),
-            // Self::Chunk => add some bytes to the beginning as a marker
-        }
+    pub fn to_text(&self) -> Result<Utf8Bytes> {
+        let s = serde_json::to_string(&self)?;
+        Ok(s.into())
     }
 }

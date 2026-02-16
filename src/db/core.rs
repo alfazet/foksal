@@ -17,6 +17,8 @@ use crate::{
 
 type Table = BTreeMap<PathBuf, SongMetadata>;
 
+type DbSubscribersMap = HashMap<(DbSubTarget, SocketAddr), tokio_chan::UnboundedSender<EventNotif>>;
+
 #[derive(Clone, Serialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum DbEvent {
@@ -32,7 +34,7 @@ pub enum DbEvent {
 pub struct Db {
     pub table: Table,
     music_root: PathBuf,
-    subscribers: HashMap<(DbSubTarget, SocketAddr), tokio_chan::UnboundedSender<EventNotif>>,
+    subscribers: DbSubscribersMap,
 }
 
 pub struct SharedDb {

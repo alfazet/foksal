@@ -58,7 +58,7 @@ async fn handle_client(
         while let Some(response) = rx_remote_response.recv().await {
             let bytes = match response {
                 RemoteResponseInner::Response(response) => response.to_bytes(),
-                RemoteResponseInner::EventNotif(notif) => notif.to_bytes_local(),
+                RemoteResponseInner::EventNotif(notif) => notif.to_bytes(),
             }
             .unwrap();
             let _ = tx_msg_clone.send(WsMessage::Binary(bytes));
@@ -69,7 +69,7 @@ async fn handle_client(
     let tx_msg_clone = tx_msg.clone();
     tokio::spawn(async move {
         while let Some(notif) = rx_event.recv().await {
-            if let Ok(bytes) = notif.to_bytes_local() {
+            if let Ok(bytes) = notif.to_bytes() {
                 let _ = tx_msg_clone.send(WsMessage::Binary(bytes));
             }
         }
@@ -151,6 +151,7 @@ async fn run(
 
     // task to pass requests to the proxy->remote ws connection
     tokio::spawn(async move {
+        // TODO: this need to also receive file requests
         while let Some(request) = rx_remote_request.recv().await {
             let _ = ws_write
                 .send(WsMessage::Binary(request.to_bytes().unwrap()))
@@ -162,20 +163,19 @@ async fn run(
     tokio::spawn(async move {
         while let Some(msg) = ws_read.next().await {
             match msg {
-                Ok(WsMessage::Binary(bytes)) => match bytes.first() {
-                    Some(0) => (), // TODO: file chunk
-                    None => (),
-                    _ => {
-                        let Ok(response) = serde_json::from_slice::<RemoteResponse>(&bytes) else {
-                            return;
-                        };
-                        if let Some(client) = response.client
-                            && let Some(tx) = clients_clone.read().unwrap().get(&client)
-                        {
-                            let _ = tx.send(response.inner);
-                        }
+                Ok(WsMessage::Text(text)) => {
+                    let Ok(response) = serde_json::from_str::<RemoteResponse>(&text) else {
+                        return;
+                    };
+                    if let Some(client) = response.client
+                        && let Some(tx) = clients_clone.read().unwrap().get(&client)
+                    {
+                        let _ = tx.send(response.inner);
                     }
-                },
+                }
+                Ok(WsMessage::Binary(bytes)) => {
+                    // pass this to the oneshow channel back to the sink
+                }
                 _ => (),
             }
         }
