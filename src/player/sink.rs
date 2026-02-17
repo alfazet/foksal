@@ -1,9 +1,10 @@
 use anyhow::Result;
+use crossbeam::channel as cbeam_chan;
 use std::{path::PathBuf, thread};
 use tokio::sync::{mpsc as tokio_chan, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
 
-use crate::player::request::FileRequest;
+use crate::{net::request::RawFileRequest, player::request::FileRequest};
 
 type CommonSample = f32;
 
@@ -28,25 +29,57 @@ enum SinkState {
 struct AudioChunk {}
 
 fn run(
-    mut rx_sink_request: tokio_chan::UnboundedReceiver<SinkRequest>,
     tx_file_request: tokio_chan::UnboundedSender<FileRequest>,
+    mut rx_sink_request: cbeam_chan::Receiver<SinkRequest>,
 ) -> Result<()> {
     let mut state = SinkState::Stopped;
     let mut samples = Vec::<CommonSample>::new();
     let mut ts = 0;
 
     let mut rx_file_request_response: Option<oneshot::Receiver<Bytes>> = None;
-
     loop {
-        if let Some(request) = match state {
-            SinkState::Playing(_) => rx_sink_request.try_recv().ok(),
-            _ => rx_sink_request.blocking_recv(),
-        } {
+        let request = match state {
+            SinkState::Playing(_) => match rx_sink_request.try_recv() {
+                Ok(request) => Some(request),
+                Err(cbeam_chan::TryRecvError::Disconnected) => break Ok(()),
+                _ => None,
+            },
+            _ => match rx_sink_request.recv() {
+                Ok(request) => Some(request),
+                Err(_) => break Ok(()),
+            },
+        };
+        if let Some(request) = request {
             match request {
                 SinkRequest::Play(uri) => {
                     println!("requested to play {:?}", uri);
-                    // TODO: send a PrepareFile request
+                    let (tx, rx) = oneshot::channel();
+                    rx_file_request_response = Some(rx);
+                    let _ = tx_file_request.send(FileRequest::new(
+                        RawFileRequest::GetChunk {
+                            uri: uri.clone(),
+                            start: 0,
+                            end: 1,
+                        },
+                        Some(tx),
+                    ));
+
+                    state = SinkState::Playing(uri);
                     samples.clear();
+                }
+                SinkRequest::Pause => {
+                    println!("trying to pause");
+                    if let SinkState::Playing(uri) = state {
+                        println!("paused");
+                        state = SinkState::Paused(uri);
+                    }
+                }
+                SinkRequest::Resume => {
+                    println!("trying to resume");
+                    if let SinkState::Paused(uri) = state {
+                        println!("resumed");
+                        state = SinkState::Playing(uri);
+                    }
                 }
                 _ => todo!(),
             }
@@ -55,6 +88,7 @@ fn run(
             && let Ok(bytes) = rx.try_recv()
         {
             // parse the bytes as an AudioChunk
+            println!("got a response: {:?}", bytes);
         }
 
         if let SinkState::Playing(uri) = &state {
@@ -69,8 +103,8 @@ fn run(
 }
 
 pub fn spawn_blocking(
-    rx_sink_request: tokio_chan::UnboundedReceiver<SinkRequest>,
     tx_file_request: tokio_chan::UnboundedSender<FileRequest>,
+    rx_sink_request: cbeam_chan::Receiver<SinkRequest>,
 ) {
-    thread::spawn(move || run(rx_sink_request, tx_file_request));
+    thread::spawn(move || run(tx_file_request, rx_sink_request));
 }

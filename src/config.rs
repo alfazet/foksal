@@ -50,7 +50,6 @@ pub struct LocalArgs {
     music_root: Option<PathBuf>,
 }
 
-// TODO: refactor music_root, ignore_glob_set and allowed_exts into some FsConfig in db/fs module
 pub struct LocalConfig {
     pub local_port: u16,
     pub music_root: PathBuf,
@@ -87,9 +86,14 @@ pub struct RemoteArgs {
     music_root: Option<PathBuf>,
 }
 
-// TODO: refactor music_root, ignore_glob_set and allowed_exts into some FsConfig in db/fs module
 pub struct RemoteConfig {
     pub local_port: u16,
+    pub music_root: PathBuf,
+    pub ignore_glob_set: GlobSet,
+    pub allowed_exts: Vec<String>,
+}
+
+pub struct DbConfig {
     pub music_root: PathBuf,
     pub ignore_glob_set: GlobSet,
     pub allowed_exts: Vec<String>,

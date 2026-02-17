@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow, bail};
+use crossbeam::channel as cbeam_chan;
 use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
 use tokio::{
@@ -14,6 +15,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Level, error, event, info, instrument, warn};
 
 use crate::{
+    config::{DbConfig, LocalConfig},
     db::{
         core::SharedDb,
         db_controller,
@@ -30,6 +32,7 @@ use crate::{
         core::{Player, PlayerEvent},
         player_controller,
         request::{PlayerRequest, PlayerRequestKind},
+        sink,
     },
 };
 
@@ -175,19 +178,30 @@ async fn run(
     }
 }
 
-pub fn spawn(
-    port: u16,
-    db: SharedDb,
-    player: Player,
-    c_token: CancellationToken,
-) -> JoinHandle<Result<()>> {
+pub fn spawn(config: LocalConfig, c_token: CancellationToken) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         let (tx_db_request, rx_db_request) = tokio_chan::unbounded_channel();
         let (tx_player_request, rx_player_request) = tokio_chan::unbounded_channel();
-        player_controller::spawn(player, rx_player_request);
-        db_controller::spawn_blocking(db, rx_db_request);
+        let (tx_file_request, rx_file_request) = tokio_chan::unbounded_channel();
+        let (tx_sink_request, rx_sink_request) = cbeam_chan::unbounded();
+
+        let LocalConfig {
+            local_port,
+            music_root,
+            ignore_glob_set,
+            allowed_exts,
+        } = config;
+        let db_config = DbConfig {
+            music_root,
+            ignore_glob_set,
+            allowed_exts,
+        };
+        db_controller::spawn(db_config, rx_db_request, rx_file_request)?;
+        player_controller::spawn(tx_sink_request, rx_player_request);
+        sink::spawn_blocking(tx_file_request, rx_sink_request);
+
         let res = tokio::select! {
-            res = run(port, tx_db_request, tx_player_request, c_token.clone()) => res,
+            res = run(local_port, tx_db_request, tx_player_request, c_token.clone()) => res,
             _ = c_token.cancelled() => Ok(()),
         };
         c_token.cancel();

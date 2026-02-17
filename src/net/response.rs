@@ -33,8 +33,6 @@ pub struct RemoteResponse {
     pub client: Option<SocketAddr>, // option, because the request might be unparseable
 }
 
-/// for Chunk responses, the first byte will be 0x00
-/// otherwise, no header
 pub enum RemoteResponseKind {
     TextResponse(RemoteResponse),
     BinaryResponse(Vec<u8>),

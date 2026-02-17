@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use crossbeam::channel as cbeam_chan;
 use std::{
     fmt::Display,
     path::{Path, PathBuf},
@@ -19,6 +20,7 @@ use crate::{
     player::{
         core::Player,
         request::{ParsedPlayerRequestArgs, PlayerRequest, PlayerRequestKind},
+        sink::SinkRequest,
     },
 };
 
@@ -51,9 +53,10 @@ where
 }
 
 async fn run(
-    mut player: Player,
+    tx_sink_request: cbeam_chan::Sender<SinkRequest>,
     mut rx_player_request: tokio_chan::UnboundedReceiver<PlayerRequest>,
 ) {
+    let mut player = Player::new(tx_sink_request);
     while let Some(PlayerRequest { kind, respond_to }) = rx_player_request.recv().await {
         let response = match kind {
             PlayerRequestKind::Raw(raw_request) => match raw_request {
@@ -62,6 +65,11 @@ async fn run(
                         player.add_to_queue(args)
                     })
                 }
+                RawPlayerRequest::Play(raw_args) => {
+                    handle_request(&player, raw_args, |player, args| player.play(args))
+                }
+                RawPlayerRequest::Pause => player.pause(),
+                RawPlayerRequest::Resume => player.resume(),
                 _ => unreachable!(),
             },
             PlayerRequestKind::Subscribe(SubscribeArgs {
@@ -81,8 +89,11 @@ async fn run(
     }
 }
 
-pub fn spawn(player: Player, rx_player_request: tokio_chan::UnboundedReceiver<PlayerRequest>) {
+pub fn spawn(
+    tx_sink_request: cbeam_chan::Sender<SinkRequest>,
+    rx_player_request: tokio_chan::UnboundedReceiver<PlayerRequest>,
+) {
     tokio::spawn(async move {
-        run(player, rx_player_request).await;
+        run(tx_sink_request, rx_player_request).await;
     });
 }

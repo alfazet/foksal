@@ -62,6 +62,12 @@ pub struct RawAddToQueueArgs {
     pub pos: Option<usize>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawPlayArgs {
+    pub uri: PathBuf,
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RawDbRequest {
@@ -77,8 +83,10 @@ pub enum RawPlayerRequest {
     Subscribe(PlayerSubTarget),
     Unsubscribe(PlayerSubTarget),
     AddToQueue(RawAddToQueueArgs),
+    Play(RawPlayArgs),
     State,
-    Play,
+    Pause,
+    Resume,
     Toggle,
     Next,
     Prev,
@@ -117,6 +125,14 @@ impl RawDbRequestArgs for RawMetadataArgs {}
 impl RawDbRequestArgs for RawSelectArgs {}
 
 impl RawPlayerRequestArgs for RawAddToQueueArgs {}
+
+impl RawPlayerRequestArgs for RawPlayArgs {}
+
+impl RawFileRequest {
+    pub fn requires_response(&self) -> bool {
+        matches!(self, Self::GetChunk { .. })
+    }
+}
 
 impl RemoteRequest {
     pub fn to_bytes(&self) -> Result<Bytes> {

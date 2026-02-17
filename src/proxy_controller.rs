@@ -1,14 +1,17 @@
 use anyhow::{Result, anyhow, bail};
+use crossbeam::channel as cbeam_chan;
 use futures_util::{SinkExt, StreamExt};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     net::SocketAddr,
     sync::{Arc, Mutex, RwLock},
+    time::Duration,
 };
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::{mpsc as tokio_chan, oneshot},
     task::JoinHandle,
+    time,
 };
 use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream,
@@ -21,6 +24,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Level, error, event, info, instrument, warn};
 
 use crate::{
+    config::ProxyConfig,
     net::{
         request::{LocalRequest, RawPlayerRequest, RemoteRequest, SubscribeArgs, UnsubscribeArgs},
         response::{EventNotif, RemoteResponse, RemoteResponseInner, RemoteResponseKind, Response},
@@ -28,9 +32,15 @@ use crate::{
     player::{
         core::Player,
         player_controller,
-        request::{PlayerRequest, PlayerRequestKind},
+        request::{FileRequest, PlayerRequest, PlayerRequestKind},
+        sink,
     },
 };
+
+type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type ClientsMap = HashMap<SocketAddr, tokio_chan::UnboundedSender<RemoteResponseInner>>;
+
+const PING_TIMEOUT: u64 = 10; // in seconds
 
 async fn handle_client(
     tcp_stream: TcpStream,
@@ -134,49 +144,85 @@ async fn handle_client(
 }
 
 async fn run(
-    ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    ws_stream: WsStream,
     local_port: u16,
     tx_player_request: tokio_chan::UnboundedSender<PlayerRequest>,
-    tx_remote_request: tokio_chan::UnboundedSender<RemoteRequest>,
-    mut rx_remote_request: tokio_chan::UnboundedReceiver<RemoteRequest>,
+    mut rx_file_request: tokio_chan::UnboundedReceiver<FileRequest>,
     c_token: CancellationToken,
 ) -> Result<()> {
     let listener = TcpListener::bind(format!("127.0.0.1:{}", local_port)).await?;
     let (mut ws_write, mut ws_read) = ws_stream.split();
-    let clients = Arc::new(RwLock::new(HashMap::<
-        SocketAddr,
-        tokio_chan::UnboundedSender<RemoteResponseInner>,
-    >::new()));
+    let (tx_remote_request, mut rx_remote_request) =
+        tokio_chan::unbounded_channel::<RemoteRequest>();
+    let (tx_ping, mut rx_ping) = tokio_chan::unbounded_channel();
+    let clients = Arc::new(RwLock::new(ClientsMap::new()));
     let clients_clone = Arc::clone(&clients);
+    let rxs_file_response = Arc::new(Mutex::new(VecDeque::new()));
+    let rxs_file_response_clone = Arc::clone(&rxs_file_response);
+    let c_token_clone = c_token.clone();
+
+    // task to ping the remote
+    tokio::spawn(async move {
+        loop {
+            time::sleep(Duration::from_secs(PING_TIMEOUT)).await;
+            let _ = tx_ping.send(());
+        }
+    });
 
     // task to pass requests to the proxy->remote ws connection
     tokio::spawn(async move {
-        // TODO: this need to also receive file requests
-        while let Some(request) = rx_remote_request.recv().await {
-            let _ = ws_write
-                .send(WsMessage::Binary(request.to_bytes().unwrap()))
-                .await;
+        loop {
+            let msg = tokio::select! {
+                Some(request) = rx_remote_request.recv() => {
+                    WsMessage::Binary(request.to_bytes().unwrap())
+                }
+                Some(request) = rx_file_request.recv() => {
+                    let remote_request = RemoteRequest::FileRequest(request.raw);
+                    if let Some(respond_to) = request.respond_to {
+                        rxs_file_response.lock().unwrap().push_back(respond_to);
+                    }
+                    WsMessage::Binary(remote_request.to_bytes().unwrap())
+                }
+                Some(_) = rx_ping.recv() => {
+                    WsMessage::Ping("".into())
+                }
+            };
+            let _ = ws_write.send(msg).await;
         }
     });
 
     // task to read responses from the remote and pass them to recipient clients
     tokio::spawn(async move {
-        while let Some(msg) = ws_read.next().await {
-            match msg {
-                Ok(WsMessage::Text(text)) => {
-                    let Ok(response) = serde_json::from_str::<RemoteResponse>(&text) else {
-                        return;
-                    };
-                    if let Some(client) = response.client
-                        && let Some(tx) = clients_clone.read().unwrap().get(&client)
-                    {
-                        let _ = tx.send(response.inner);
+        loop {
+            tokio::select! {
+                Some(msg) = ws_read.next() => {
+                    match msg {
+                        Ok(WsMessage::Text(text)) => {
+                            let Ok(response) = serde_json::from_str::<RemoteResponse>(&text) else {
+                                return;
+                            };
+                            if let Some(client) = response.client
+                                && let Some(tx) = clients_clone.read().unwrap().get(&client)
+                            {
+                                let _ = tx.send(response.inner);
+                            }
+                        }
+                        Ok(WsMessage::Binary(bytes)) => {
+                            let respond_to = rxs_file_response_clone.lock().unwrap().pop_front();
+                            match respond_to {
+                                Some(tx) => {
+                                    let _ = tx.send(bytes);
+                                }
+                                None => warn!("remote sent back an unprompted response"),
+                            }
+                        }
+                        _ => (),
                     }
                 }
-                Ok(WsMessage::Binary(bytes)) => {
-                    // pass this to the oneshow channel back to the sink
+                _ = time::sleep(Duration::from_secs(2 * PING_TIMEOUT)) => {
+                    warn!("connection to remote instance timed out");
+                    c_token_clone.cancel();
                 }
-                _ => (),
             }
         }
     });
@@ -206,17 +252,21 @@ async fn run(
 }
 
 pub fn spawn(
-    ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
-    local_port: u16,
-    player: Player,
+    ws_stream: WsStream,
+    config: ProxyConfig,
     c_token: CancellationToken,
 ) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         let (tx_player_request, rx_player_request) = tokio_chan::unbounded_channel();
-        player_controller::spawn(player, rx_player_request);
-        let (tx_remote_request, rx_remote_request) = tokio_chan::unbounded_channel();
+        let (tx_file_request, rx_file_request) = tokio_chan::unbounded_channel();
+        let (tx_sink_request, rx_sink_request) = cbeam_chan::unbounded();
+
+        let ProxyConfig { local_port, .. } = config;
+        player_controller::spawn(tx_sink_request, rx_player_request);
+        sink::spawn_blocking(tx_file_request, rx_sink_request);
+
         let res = tokio::select! {
-            res = run(ws_stream, local_port, tx_player_request, tx_remote_request.clone(), rx_remote_request, c_token.clone()) => res,
+            res = run(ws_stream, local_port, tx_player_request, rx_file_request, c_token.clone()) => res,
             _ = c_token.cancelled() => Ok(()),
         };
         c_token.cancel();
@@ -225,12 +275,9 @@ pub fn spawn(
     })
 }
 
-pub async fn connect_to_remote(
-    host: String,
-    port: u16,
-) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>> {
+pub async fn connect_to_remote(host: impl AsRef<str>, port: u16) -> Result<WsStream> {
     let (ws_stream, _) =
-        tokio_tungstenite::connect_async(format!("ws://{}:{}", host, port)).await?;
+        tokio_tungstenite::connect_async(format!("ws://{}:{}", host.as_ref(), port)).await?;
 
     Ok(ws_stream)
 }

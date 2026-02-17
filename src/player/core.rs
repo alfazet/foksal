@@ -1,4 +1,5 @@
 use anyhow::Result;
+use crossbeam::channel as cbeam_chan;
 use serde::Serialize;
 use std::{
     collections::{HashMap, VecDeque},
@@ -9,7 +10,7 @@ use tokio::sync::mpsc as tokio_chan;
 
 use crate::{
     net::{request::PlayerSubTarget, response::EventNotif},
-    player::{queue::Queue, request::ParsedAddToQueueArgs},
+    player::{queue::Queue, request::ParsedAddToQueueArgs, sink::SinkRequest},
 };
 
 type PlayerSubscribersMap =
@@ -24,13 +25,15 @@ pub enum PlayerEvent {
 pub struct Player {
     queue: Queue,
     subscribers: PlayerSubscribersMap,
+    tx_sink_request: cbeam_chan::Sender<SinkRequest>,
 }
 
 impl Player {
-    pub fn new() -> Self {
+    pub fn new(tx_sink_request: cbeam_chan::Sender<SinkRequest>) -> Self {
         Self {
             queue: Queue::new(),
             subscribers: HashMap::new(),
+            tx_sink_request,
         }
     }
 
@@ -82,5 +85,20 @@ impl Player {
         }
 
         res
+    }
+
+    pub fn play_sink(&self, uri: PathBuf) {
+        let _ = self.tx_sink_request.send(SinkRequest::Play(uri));
+        // TODO: notify subscribers to sink events
+    }
+
+    pub fn pause_sink(&self) {
+        let _ = self.tx_sink_request.send(SinkRequest::Pause);
+        // TODO: notify subscribers to sink evenets
+    }
+
+    pub fn resume_sink(&self) {
+        let _ = self.tx_sink_request.send(SinkRequest::Resume);
+        // TODO: notify subscribers to sink evenets
     }
 }

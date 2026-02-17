@@ -8,8 +8,8 @@ use tokio_tungstenite::tungstenite::Bytes;
 use crate::{
     net::{
         request::{
-            PlayerSubTarget, RawAddToQueueArgs, RawFileRequest, RawPlayerRequest, SubTarget,
-            SubscribeArgs, UnsubscribeArgs,
+            PlayerSubTarget, RawAddToQueueArgs, RawFileRequest, RawPlayArgs, RawPlayerRequest,
+            SubTarget, SubscribeArgs, UnsubscribeArgs,
         },
         response::{EventNotif, Response},
     },
@@ -23,6 +23,10 @@ pub struct ParsedAddToQueueArgs {
     pub pos: Option<usize>,
 }
 
+pub struct ParsedPlayArgs {
+    pub uri: PathBuf,
+}
+
 pub enum PlayerRequestKind {
     Raw(RawPlayerRequest),
     Subscribe(SubscribeArgs<PlayerSubTarget>),
@@ -34,13 +38,9 @@ pub struct PlayerRequest {
     pub respond_to: oneshot::Sender<Response>,
 }
 
-pub enum FileRequestKind {
-    Raw(RawFileRequest),
-}
-
 pub struct FileRequest {
-    pub kind: FileRequestKind,
-    pub respond_to: oneshot::Sender<Bytes>,
+    pub raw: RawFileRequest,
+    pub respond_to: Option<oneshot::Sender<Bytes>>,
 }
 
 impl<T: SubTarget> SubscribeArgs<T> {
@@ -65,6 +65,8 @@ impl<T: SubTarget> UnsubscribeArgs<T> {
 
 impl ParsedPlayerRequestArgs for ParsedAddToQueueArgs {}
 
+impl ParsedPlayerRequestArgs for ParsedPlayArgs {}
+
 impl TryFrom<RawAddToQueueArgs> for ParsedAddToQueueArgs {
     type Error = anyhow::Error;
 
@@ -76,9 +78,23 @@ impl TryFrom<RawAddToQueueArgs> for ParsedAddToQueueArgs {
     }
 }
 
+impl TryFrom<RawPlayArgs> for ParsedPlayArgs {
+    type Error = anyhow::Error;
+
+    fn try_from(raw: RawPlayArgs) -> Result<Self> {
+        Ok(Self { uri: raw.uri })
+    }
+}
+
 impl PlayerRequest {
     pub fn new(kind: PlayerRequestKind, respond_to: oneshot::Sender<Response>) -> Self {
         Self { kind, respond_to }
+    }
+}
+
+impl FileRequest {
+    pub fn new(raw: RawFileRequest, respond_to: Option<oneshot::Sender<Bytes>>) -> Self {
+        Self { raw, respond_to }
     }
 }
 
@@ -112,5 +128,20 @@ impl Player {
             .with_item("queue", &queue.list())
             .with_item("current_song", &queue.cur())
             .with_item("queue_pos", &queue.pos())
+    }
+
+    pub fn pause(&self) -> Response {
+        self.pause_sink();
+        Response::new_ok()
+    }
+
+    pub fn resume(&self) -> Response {
+        self.resume_sink();
+        Response::new_ok()
+    }
+
+    pub fn play(&self, ParsedPlayArgs { uri }: ParsedPlayArgs) -> Response {
+        self.play_sink(uri);
+        Response::new_ok()
     }
 }
