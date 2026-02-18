@@ -1,14 +1,22 @@
 use anyhow::{Result, bail};
 use globset::GlobSet;
 use jwalk::WalkDir;
-use std::path::{Path, PathBuf};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
+use symphonia::core::{
+    io::MediaSourceStream,
+    meta::MetadataOptions,
+    probe::{Hint, ProbeResult},
+};
 
 fn ensure_path_exists(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
     match path.try_exists() {
         Ok(false) => bail!("path `{}` not found", path.to_string_lossy()),
         Err(err) => bail!(
-            "path `{}` could not be accessed (reason: {})",
+            "path `{}` could not be accessed ({})",
             path.to_string_lossy(),
             err
         ),
@@ -51,6 +59,23 @@ pub fn walk_dir(
         .collect();
 
     Ok(paths)
+}
+
+pub fn get_probe_result(path: impl AsRef<Path>) -> Result<ProbeResult> {
+    let source = Box::new(File::open(path.as_ref())?);
+    let mut hint = Hint::new();
+    if let Some(ext) = path.as_ref().extension()
+        && let Some(ext) = ext.to_str()
+    {
+        hint.with_extension(ext);
+    }
+    let mss = MediaSourceStream::new(source, Default::default());
+    let format_opts = Default::default();
+    let metadata_opts: MetadataOptions = Default::default();
+    let probe_res =
+        symphonia::default::get_probe().format(&hint, mss, &format_opts, &metadata_opts)?;
+
+    Ok(probe_res)
 }
 
 #[cfg(test)]

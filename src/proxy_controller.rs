@@ -176,11 +176,9 @@ async fn run(
                 Some(request) = rx_remote_request.recv() => {
                     WsMessage::Binary(request.to_bytes().unwrap())
                 }
-                Some(request) = rx_file_request.recv() => {
-                    let remote_request = RemoteRequest::FileRequest(request.raw);
-                    if let Some(respond_to) = request.respond_to {
-                        rxs_file_response.lock().unwrap().push_back(respond_to);
-                    }
+                Some(FileRequest { raw, respond_to }) = rx_file_request.recv() => {
+                    let remote_request = RemoteRequest::FileRequest(raw);
+                    rxs_file_response.lock().unwrap().push_back(respond_to);
                     WsMessage::Binary(remote_request.to_bytes().unwrap())
                 }
                 Some(_) = rx_ping.recv() => {

@@ -1,6 +1,7 @@
 // TODO: remove before release
 #![allow(unused_imports)]
 
+mod audio_common;
 mod config;
 mod db;
 mod net;

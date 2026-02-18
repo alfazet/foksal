@@ -95,8 +95,11 @@ pub enum RawPlayerRequest {
 #[derive(Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RawFileRequest {
-    PrepareFile(PathBuf),
-    GetChunk { uri: PathBuf, start: u64, end: u64 },
+    GetChunk {
+        uri: PathBuf,
+        start: usize,
+        end: usize,
+    },
 }
 
 #[derive(Deserialize)]

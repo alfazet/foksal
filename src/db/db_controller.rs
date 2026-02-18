@@ -8,6 +8,7 @@ use crate::{
     config::DbConfig,
     db::{
         core::{Db, SharedDb},
+        decoder,
         request::{DbRequest, DbRequestKind, ParsedDbRequestArgs},
     },
     net::{
@@ -32,64 +33,7 @@ where
     }
 }
 
-async fn run(
-    db: SharedDb,
-    mut rx_db_request: tokio_chan::UnboundedReceiver<DbRequest>,
-    mut rx_file_request: tokio_chan::UnboundedReceiver<FileRequest>,
-) {
-    loop {
-        tokio::select! {
-            db_request = rx_db_request.recv() => {
-                match db_request {
-                    Some(DbRequest { kind, respond_to}) => {
-                        let response = match kind {
-                            DbRequestKind::Raw(raw_request) => match raw_request {
-                                RawDbRequest::Metadata(raw_args) => {
-                                    handle_request(&db, raw_args, |db, parsed_args| db.metadata(parsed_args))
-                                }
-                                RawDbRequest::Select(raw_args) => {
-                                    handle_request(&db, raw_args, |db, parsed_args| db.select(parsed_args))
-                                }
-                                _ => unreachable!(),
-                            },
-                            DbRequestKind::Subscribe(SubscribeArgs {
-                                target,
-                                addr,
-                                send_to,
-                            }) => {
-                                db.add_subscriber(target, addr, send_to);
-                                Response::new_ok()
-                            }
-                            DbRequestKind::Unsubscribe(UnsubscribeArgs { target, addr }) => {
-                                db.remove_subscriber(target, addr);
-                                Response::new_ok()
-                            }
-                        };
-                        let _ = respond_to.send(response);
-                    }
-                    None => break,
-                }
-            }
-            file_request = rx_file_request.recv() => {
-                match file_request {
-                    Some(FileRequest { raw, respond_to }) => {
-                        match raw {
-                            RawFileRequest::PrepareFile(uri) => {
-                                println!("preparing {:?}", uri);
-                            }
-                            RawFileRequest::GetChunk { uri, .. } => {
-                                if let Some(respond_to) = respond_to {
-                                    let _ = respond_to.send(Bytes::from_static(b"lorem ipsum"));
-                                }
-                            }
-                        }
-                    }
-                    None => break,
-                }
-            }
-        }
-    }
-
+async fn run(db: SharedDb, mut rx_db_request: tokio_chan::UnboundedReceiver<DbRequest>) {
     while let Some(DbRequest { kind, respond_to }) = rx_db_request.recv().await {
         let response = match kind {
             DbRequestKind::Raw(raw_request) => match raw_request {
@@ -128,12 +72,13 @@ pub fn spawn(
         ignore_glob_set,
         allowed_exts,
     } = config;
+    decoder::spawn(&music_root, rx_file_request);
     let db = Db::new(&music_root, &ignore_glob_set, &allowed_exts)?;
     let db = SharedDb::new(db);
     db.start_fs_watcher(&music_root, ignore_glob_set, allowed_exts)?;
 
     tokio::spawn(async move {
-        run(db, rx_db_request, rx_file_request).await;
+        run(db, rx_db_request).await;
     });
 
     Ok(())

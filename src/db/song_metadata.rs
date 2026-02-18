@@ -6,7 +6,7 @@ use symphonia::core::{
     probe::{Hint, ProbeResult},
 };
 
-use crate::db::{filter::ParsedFilter, tag::TagKey};
+use crate::db::{filter::ParsedFilter, fs_utils, tag::TagKey};
 
 #[derive(Clone, Debug, Default)]
 pub struct SongMetadata {
@@ -34,7 +34,7 @@ impl From<&MetadataRevision> for SongMetadata {
 
 impl SongMetadata {
     pub fn try_new(uri: impl AsRef<Path>) -> Result<Self> {
-        let mut probe_res = get_probe_result(&uri)?;
+        let mut probe_res = fs_utils::get_probe_result(&uri)?;
         let from_container = probe_res
             .format
             .metadata()
@@ -82,21 +82,4 @@ impl SongMetadata {
             items: self.items.into_iter().chain(other.items).collect(),
         }
     }
-}
-
-fn get_probe_result(path: impl AsRef<Path>) -> Result<ProbeResult> {
-    let source = Box::new(File::open(path.as_ref())?);
-    let mut hint = Hint::new();
-    if let Some(ext) = path.as_ref().extension()
-        && let Some(ext) = ext.to_str()
-    {
-        hint.with_extension(ext);
-    }
-    let mss = MediaSourceStream::new(source, Default::default());
-    let format_opts = Default::default();
-    let metadata_opts: MetadataOptions = Default::default();
-    let probe_res =
-        symphonia::default::get_probe().format(&hint, mss, &format_opts, &metadata_opts)?;
-
-    Ok(probe_res)
 }

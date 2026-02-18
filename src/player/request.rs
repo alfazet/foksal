@@ -40,7 +40,7 @@ pub struct PlayerRequest {
 
 pub struct FileRequest {
     pub raw: RawFileRequest,
-    pub respond_to: Option<oneshot::Sender<Bytes>>,
+    pub respond_to: oneshot::Sender<Bytes>,
 }
 
 impl<T: SubTarget> SubscribeArgs<T> {
@@ -93,7 +93,7 @@ impl PlayerRequest {
 }
 
 impl FileRequest {
-    pub fn new(raw: RawFileRequest, respond_to: Option<oneshot::Sender<Bytes>>) -> Self {
+    pub fn new(raw: RawFileRequest, respond_to: oneshot::Sender<Bytes>) -> Self {
         Self { raw, respond_to }
     }
 }

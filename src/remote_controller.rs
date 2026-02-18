@@ -67,19 +67,12 @@ async fn handle_request(
             Ok(Some(RemoteResponseKind::TextResponse(response)))
         }
         RemoteRequest::FileRequest(request) => {
-            if request.requires_response() {
-                let (respond_to, rx_response) = oneshot::channel();
-                let request = FileRequest::new(request, Some(respond_to));
-                tx_file_request.send(request)?;
-                let bytes = rx_response.await?;
+            let (respond_to, rx_response) = oneshot::channel();
+            let request = FileRequest::new(request, respond_to);
+            tx_file_request.send(request)?;
+            let bytes = rx_response.await?;
 
-                Ok(Some(RemoteResponseKind::BinaryResponse(bytes.into())))
-            } else {
-                let request = FileRequest::new(request, None);
-                tx_file_request.send(request)?;
-
-                Ok(None)
-            }
+            Ok(Some(RemoteResponseKind::BinaryResponse(bytes.into())))
         }
     }
 }

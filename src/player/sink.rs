@@ -1,12 +1,15 @@
 use anyhow::Result;
 use crossbeam::channel as cbeam_chan;
+use rkyv::{access, deserialize, rancor::Error as RkyvError};
 use std::{path::PathBuf, thread};
 use tokio::sync::{mpsc as tokio_chan, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
 
-use crate::{net::request::RawFileRequest, player::request::FileRequest};
-
-type CommonSample = f32;
+use crate::{
+    audio_common::{ArchivedAudioChunk, AudioChunk, CommonSample},
+    net::request::RawFileRequest,
+    player::request::FileRequest,
+};
 
 const CHUNK_LEN: u64 = 1; // in seconds
 
@@ -20,26 +23,24 @@ pub enum SinkRequest {
 }
 
 enum SinkState {
-    Playing(PathBuf),
-    Paused(PathBuf),
+    Playing { uri: PathBuf, ts: u32 },
+    Paused { uri: PathBuf, ts: u32 },
     Stopped,
 }
 
-// rkyv
-struct AudioChunk {}
-
 fn run(
     tx_file_request: tokio_chan::UnboundedSender<FileRequest>,
-    mut rx_sink_request: cbeam_chan::Receiver<SinkRequest>,
+    rx_sink_request: cbeam_chan::Receiver<SinkRequest>,
 ) -> Result<()> {
     let mut state = SinkState::Stopped;
+    let mut src_n_channels = None;
+    let mut src_sample_rate = None;
     let mut samples = Vec::<CommonSample>::new();
-    let mut ts = 0;
 
     let mut rx_file_request_response: Option<oneshot::Receiver<Bytes>> = None;
     loop {
         let request = match state {
-            SinkState::Playing(_) => match rx_sink_request.try_recv() {
+            SinkState::Playing { .. } => match rx_sink_request.try_recv() {
                 Ok(request) => Some(request),
                 Err(cbeam_chan::TryRecvError::Disconnected) => break Ok(()),
                 _ => None,
@@ -61,24 +62,19 @@ fn run(
                             start: 0,
                             end: 1,
                         },
-                        Some(tx),
+                        tx,
                     ));
-
-                    state = SinkState::Playing(uri);
+                    state = SinkState::Playing { uri, ts: 0 };
                     samples.clear();
                 }
                 SinkRequest::Pause => {
-                    println!("trying to pause");
-                    if let SinkState::Playing(uri) = state {
-                        println!("paused");
-                        state = SinkState::Paused(uri);
+                    if let SinkState::Playing { uri, ts } = state {
+                        state = SinkState::Paused { uri, ts };
                     }
                 }
                 SinkRequest::Resume => {
-                    println!("trying to resume");
-                    if let SinkState::Paused(uri) = state {
-                        println!("resumed");
-                        state = SinkState::Playing(uri);
+                    if let SinkState::Paused { uri, ts } = state {
+                        state = SinkState::Playing { uri, ts };
                     }
                 }
                 _ => todo!(),
@@ -87,11 +83,14 @@ fn run(
         if let Some(ref mut rx) = rx_file_request_response
             && let Ok(bytes) = rx.try_recv()
         {
-            // parse the bytes as an AudioChunk
-            println!("got a response: {:?}", bytes);
+            let chunk = access::<ArchivedAudioChunk, RkyvError>(&bytes).unwrap();
+            src_n_channels.replace(chunk.n_channels);
+            src_sample_rate.replace(chunk.sample_rate);
+            samples.extend(chunk.samples.as_slice().iter().map(|x| x.to_native()));
+            // TODO: also take timestamps from AudioChunks (musing, line 292 in decoder.rs)
         }
 
-        if let SinkState::Playing(uri) = &state {
+        if let SinkState::Playing { uri, ts } = &state {
             // send a GetChunk request with start = ts, end = ts + CHUNK_LEN
             // parse the returned bytes as a (n_channels, sample_rate, n_samples, samples) struct
             // if n_samples < CHUNK_LEN * sample_rate, then note that this is the end of the file
