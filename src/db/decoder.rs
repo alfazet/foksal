@@ -63,8 +63,8 @@ fn decode_file(
                 Err(TryRecvError::Disconnected) => break,
                 _ => (),
             }
-            if let (Some(n_channels), Some(sample_rate), Some(request)) =
-                (n_channels, sample_rate, cur_request.take())
+            if let (Some(n_channels), Some(sample_rate)) = (n_channels, sample_rate)
+                && let Some(request) = cur_request.take()
             {
                 let (start_i, end_i) = (
                     request.start * n_channels * sample_rate as usize,
@@ -210,6 +210,7 @@ async fn run(music_root: PathBuf, mut rx_file_request: tokio_chan::UnboundedRece
                         }
                     }
                 };
+
                 let bytes = Bytes::from_owner(bytes);
                 let _ = respond_to.send(bytes);
             }

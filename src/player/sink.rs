@@ -11,7 +11,7 @@ use crate::{
     player::request::FileRequest,
 };
 
-const CHUNK_LEN: u64 = 1; // in seconds
+const CHUNK_LEN: usize = 1; // in seconds
 
 pub enum SinkRequest {
     Play(PathBuf),
@@ -23,8 +23,8 @@ pub enum SinkRequest {
 }
 
 enum SinkState {
-    Playing { uri: PathBuf, ts: u32 },
-    Paused { uri: PathBuf, ts: u32 },
+    Playing { uri: PathBuf, ts: usize },
+    Paused { uri: PathBuf, ts: usize },
     Stopped,
 }
 
@@ -36,6 +36,7 @@ fn run(
     let mut src_n_channels = None;
     let mut src_sample_rate = None;
     let mut samples = Vec::<CommonSample>::new();
+    let mut ptr = 0;
 
     let mut rx_file_request_response: Option<oneshot::Receiver<Bytes>> = None;
     loop {
@@ -60,7 +61,7 @@ fn run(
                         RawFileRequest::GetChunk {
                             uri: uri.clone(),
                             start: 0,
-                            end: 1,
+                            end: CHUNK_LEN,
                         },
                         tx,
                     ));
@@ -82,21 +83,35 @@ fn run(
         }
         if let Some(ref mut rx) = rx_file_request_response
             && let Ok(bytes) = rx.try_recv()
+            && !bytes.is_empty()
         {
             let chunk = access::<ArchivedAudioChunk, RkyvError>(&bytes).unwrap();
             src_n_channels.replace(chunk.n_channels);
             src_sample_rate.replace(chunk.sample_rate);
-            samples.extend(chunk.samples.as_slice().iter().map(|x| x.to_native()));
-            // TODO: also take timestamps from AudioChunks (musing, line 292 in decoder.rs)
-        }
 
-        if let SinkState::Playing { uri, ts } = &state {
-            // send a GetChunk request with start = ts, end = ts + CHUNK_LEN
-            // parse the returned bytes as a (n_channels, sample_rate, n_samples, samples) struct
-            // if n_samples < CHUNK_LEN * sample_rate, then note that this is the end of the file
-            // and we shouldn't fire any more GetChunk requests
-            // (NOTE: remember the samples vs frames thing)
-            // otherwise extend the samples vector
+            // let the_samples: Vec<_> = chunk
+            //     .samples
+            //     .as_slice()
+            //     .iter()
+            //     .map(|x| x.to_native())
+            //     .collect();
+            // println!(
+            //     "n_samples: {}, avg: {}",
+            //     the_samples.len(),
+            //     the_samples.iter().map(|x| x.abs()).sum::<f32>() / the_samples.len() as f32
+            // );
+
+            samples.extend(chunk.samples.as_slice().iter().map(|x| x.to_native()));
+        }
+        if let SinkState::Playing { uri, ts } = &mut state {
+            // send samples to the cpal audio callback (backpressured channel)
+            // let start = ptr;
+            // let end = min(samples.len(), ptr + AUDIO_BUF_LEN - 1) (about 100 ms, the length is given in samples)
+            // don't do anything if start >= samples.len()
+
+            // resample samples[start..=end] and send them
+            // ptr = end + 1
+            // (duration can be calculated from the current value of ptr)
         }
     }
 }
