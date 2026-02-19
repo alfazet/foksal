@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow, bail};
-use crossbeam::channel::{self as cbeam_chan, TryRecvError};
+use crossbeam_channel::{self as cbeam_chan, TryRecvError};
 use rkyv::{Archive, Deserialize, Serialize, rancor::Error as RkyvError, util::AlignedVec};
 use std::{
     collections::HashMap,
@@ -14,7 +14,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_tungstenite::tungstenite::Bytes;
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::{
     audio_common::{AudioChunk, CommonSample},
@@ -156,7 +156,7 @@ async fn run(music_root: PathBuf, mut rx_file_request: tokio_chan::UnboundedRece
     while let Some(FileRequest { raw, respond_to }) = rx_file_request.recv().await {
         match raw {
             RawFileRequest::GetChunk { uri, start, end } => {
-                if start >= end {
+                if start > end {
                     let _ = respond_to.send(Bytes::new()); // empty => error
                     continue;
                 }
@@ -187,12 +187,12 @@ async fn run(music_root: PathBuf, mut rx_file_request: tokio_chan::UnboundedRece
                     }
                     None => {
                         if cur_uri.is_none() || cur_uri.as_ref().is_some_and(|cur| cur != &uri) {
+                            cur_uri = Some(uri.clone());
                             let (tx, rx) = cbeam_chan::unbounded();
                             if decode_file(uri.clone(), Arc::clone(&cache), rx).is_err() {
                                 let _ = respond_to.send(Bytes::new());
                                 continue;
                             }
-                            cur_uri = Some(uri);
                             tx_decoder_request = Some(tx);
                         }
                         // at this point, the current file is the requested one
@@ -210,7 +210,6 @@ async fn run(music_root: PathBuf, mut rx_file_request: tokio_chan::UnboundedRece
                         }
                     }
                 };
-
                 let bytes = Bytes::from_owner(bytes);
                 let _ = respond_to.send(bytes);
             }

@@ -11,7 +11,7 @@ use symphonia::core::{
     probe::{Hint, ProbeResult},
 };
 
-fn ensure_path_exists(path: impl AsRef<Path>) -> Result<()> {
+pub fn ensure_path_exists(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
     match path.try_exists() {
         Ok(false) => bail!("path `{}` not found", path.to_string_lossy()),

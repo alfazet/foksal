@@ -1,17 +1,21 @@
 use anyhow::Result;
-use crossbeam::channel as cbeam_chan;
+use crossbeam_channel as cbeam_chan;
 use rkyv::{access, deserialize, rancor::Error as RkyvError};
-use std::{path::PathBuf, thread};
+use std::{
+    path::{Path, PathBuf},
+    thread,
+};
 use tokio::sync::{mpsc as tokio_chan, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
+use tracing::{error, warn};
 
 use crate::{
-    audio_common::{ArchivedAudioChunk, AudioChunk, CommonSample},
+    audio_common::{AUDIO_BUF_LEN, ArchivedAudioChunk, AudioChunk, AudioSpec, CommonSample},
     net::request::RawFileRequest,
-    player::request::FileRequest,
+    player::{device::Device, request::FileRequest},
 };
 
-const CHUNK_LEN: usize = 1; // in seconds
+const CHUNK_LEN: usize = 1; // in seconds of audio
 
 pub enum SinkRequest {
     Play(PathBuf),
@@ -22,103 +26,169 @@ pub enum SinkRequest {
     // TODO: Seek
 }
 
+#[derive(Debug, Default)]
 enum SinkState {
-    Playing { uri: PathBuf, ts: usize },
-    Paused { uri: PathBuf, ts: usize },
+    #[default]
     Stopped,
+    Playing {
+        ts: usize,
+    },
+    Paused {
+        ts: usize,
+    },
 }
 
-fn run(
-    tx_file_request: tokio_chan::UnboundedSender<FileRequest>,
-    rx_sink_request: cbeam_chan::Receiver<SinkRequest>,
-) -> Result<()> {
-    let mut state = SinkState::Stopped;
-    let mut src_n_channels = None;
-    let mut src_sample_rate = None;
-    let mut samples = Vec::<CommonSample>::new();
-    let mut ptr = 0;
+struct Sink {
+    state: SinkState,
+    device: Device,
+}
 
-    let mut rx_file_request_response: Option<oneshot::Receiver<Bytes>> = None;
-    loop {
-        let request = match state {
-            SinkState::Playing { .. } => match rx_sink_request.try_recv() {
-                Ok(request) => Some(request),
-                Err(cbeam_chan::TryRecvError::Disconnected) => break Ok(()),
-                _ => None,
-            },
-            _ => match rx_sink_request.recv() {
-                Ok(request) => Some(request),
-                Err(_) => break Ok(()),
-            },
-        };
-        if let Some(request) = request {
-            match request {
-                SinkRequest::Play(uri) => {
-                    println!("requested to play {:?}", uri);
-                    let (tx, rx) = oneshot::channel();
-                    rx_file_request_response = Some(rx);
-                    let _ = tx_file_request.send(FileRequest::new(
-                        RawFileRequest::GetChunk {
-                            uri: uri.clone(),
-                            start: 0,
-                            end: CHUNK_LEN,
-                        },
-                        tx,
-                    ));
-                    state = SinkState::Playing { uri, ts: 0 };
-                    samples.clear();
-                }
-                SinkRequest::Pause => {
-                    if let SinkState::Playing { uri, ts } = state {
-                        state = SinkState::Paused { uri, ts };
+impl Sink {
+    fn new(device: Device) -> Self {
+        Self {
+            state: Default::default(),
+            device,
+        }
+    }
+
+    fn run(
+        &mut self,
+        tx_samples: cbeam_chan::Sender<CommonSample>,
+        tx_file_request: tokio_chan::UnboundedSender<FileRequest>,
+        rx_sink_request: cbeam_chan::Receiver<SinkRequest>,
+    ) {
+        let mut samples = Vec::<CommonSample>::new();
+        let mut rx_chunks: Option<oneshot::Receiver<Bytes>> = None;
+        let mut audio_spec = None;
+        let mut got_all_samples = false;
+        let mut ptr = 0;
+        let mut cur_uri = None;
+
+        loop {
+            println!("state: {:?}", self.state);
+            let request = match self.state {
+                SinkState::Playing { .. } => match rx_sink_request.try_recv() {
+                    Ok(request) => Some(request),
+                    Err(cbeam_chan::TryRecvError::Disconnected) => break,
+                    _ => None,
+                },
+                _ => match rx_sink_request.recv() {
+                    Ok(request) => Some(request),
+                    Err(_) => break,
+                },
+            };
+            if let Some(request) = request {
+                match request {
+                    SinkRequest::Play(uri) => {
+                        rx_chunks.replace(request_samples(
+                            &tx_file_request,
+                            uri.clone(),
+                            0,
+                            CHUNK_LEN,
+                        ));
+                        samples.clear();
+                        audio_spec = None;
+                        got_all_samples = false;
+                        ptr = 0;
+                        cur_uri.replace(uri);
+
+                        self.state = SinkState::Playing { ts: 0 };
                     }
-                }
-                SinkRequest::Resume => {
-                    if let SinkState::Paused { uri, ts } = state {
-                        state = SinkState::Playing { uri, ts };
+                    SinkRequest::Pause => {
+                        if let SinkState::Playing { ts } = self.state {
+                            self.state = SinkState::Paused { ts };
+                        }
                     }
+                    SinkRequest::Resume => {
+                        if let SinkState::Paused { ts } = self.state {
+                            self.state = SinkState::Playing { ts };
+                        }
+                    }
+                    _ => todo!(),
                 }
-                _ => todo!(),
             }
-        }
-        if let Some(ref mut rx) = rx_file_request_response
-            && let Ok(bytes) = rx.try_recv()
-            && !bytes.is_empty()
-        {
-            let chunk = access::<ArchivedAudioChunk, RkyvError>(&bytes).unwrap();
-            src_n_channels.replace(chunk.n_channels);
-            src_sample_rate.replace(chunk.sample_rate);
 
-            // let the_samples: Vec<_> = chunk
-            //     .samples
-            //     .as_slice()
-            //     .iter()
-            //     .map(|x| x.to_native())
-            //     .collect();
-            // println!(
-            //     "n_samples: {}, avg: {}",
-            //     the_samples.len(),
-            //     the_samples.iter().map(|x| x.abs()).sum::<f32>() / the_samples.len() as f32
-            // );
-
-            samples.extend(chunk.samples.as_slice().iter().map(|x| x.to_native()));
-        }
-        if let SinkState::Playing { uri, ts } = &mut state {
-            // send samples to the cpal audio callback (backpressured channel)
-            // let start = ptr;
-            // let end = min(samples.len(), ptr + AUDIO_BUF_LEN - 1) (about 100 ms, the length is given in samples)
-            // don't do anything if start >= samples.len()
-
-            // resample samples[start..=end] and send them
-            // ptr = end + 1
-            // (duration can be calculated from the current value of ptr)
+            if let SinkState::Playing { ts } = &self.state
+                && let Some(audio_spec) = audio_spec
+                && (ptr < samples.len() || !got_all_samples)
+            {
+                let end = (ptr + AUDIO_BUF_LEN - 1).min(samples.len() - 1);
+                let buf = &samples[ptr..=end];
+                // resample
+                for sample in buf {
+                    let _ = tx_samples.send(*sample);
+                }
+                ptr = end + 1;
+            }
+            if let Some(ref uri) = cur_uri
+                && let Some(ref mut rx) = rx_chunks
+                && let Ok(bytes) = rx.try_recv()
+            {
+                if bytes.is_empty() {
+                    error!("decoding `{}` failed", uri.to_string_lossy());
+                    self.state = SinkState::Stopped;
+                    continue;
+                }
+                let chunk = access::<ArchivedAudioChunk, RkyvError>(&bytes).unwrap();
+                let (n_channels, sample_rate) = (
+                    chunk.n_channels.to_native() as usize,
+                    chunk.sample_rate.to_native() as usize,
+                );
+                audio_spec.replace(AudioSpec::new(n_channels, sample_rate));
+                let new_samples: Vec<_> = chunk
+                    .samples
+                    .as_slice()
+                    .iter()
+                    .map(|x| x.to_native())
+                    .collect();
+                if new_samples.len() < CHUNK_LEN * n_channels * sample_rate {
+                    // last batch of samples
+                    got_all_samples = true;
+                }
+                samples.extend(new_samples);
+                let last_ts = samples.len() / (n_channels * sample_rate);
+                rx_chunks.replace(request_samples(
+                    &tx_file_request,
+                    uri.clone(),
+                    last_ts,
+                    last_ts + CHUNK_LEN,
+                ));
+            }
+            if got_all_samples && ptr >= samples.len() {
+                self.state = SinkState::Stopped;
+            }
         }
     }
 }
 
+fn request_samples(
+    tx_file_request: &tokio_chan::UnboundedSender<FileRequest>,
+    uri: PathBuf,
+    start: usize,
+    end: usize,
+) -> oneshot::Receiver<Bytes> {
+    let (tx, rx) = oneshot::channel();
+    let _ = tx_file_request.send(FileRequest::new(
+        RawFileRequest::GetChunk { uri, start, end },
+        tx,
+    ));
+
+    rx
+}
+
 pub fn spawn_blocking(
+    device_name: Option<impl AsRef<str>>,
     tx_file_request: tokio_chan::UnboundedSender<FileRequest>,
     rx_sink_request: cbeam_chan::Receiver<SinkRequest>,
-) {
-    thread::spawn(move || run(tx_file_request, rx_sink_request));
+) -> Result<()> {
+    let mut device = match device_name {
+        Some(name) => Device::try_new(name).or_else(|_| Device::try_default())?,
+        None => Device::try_default()?,
+    };
+    let (tx_samples, rx_samples) = cbeam_chan::bounded(2 * AUDIO_BUF_LEN);
+    device.init(rx_samples)?;
+    let mut sink = Sink::new(device);
+    thread::spawn(move || sink.run(tx_samples, tx_file_request, rx_sink_request));
+
+    Ok(())
 }

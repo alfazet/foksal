@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow, bail};
-use crossbeam::channel as cbeam_chan;
+use crossbeam_channel as cbeam_chan;
 use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
 use tokio::{
@@ -198,7 +198,7 @@ pub fn spawn(config: LocalConfig, c_token: CancellationToken) -> JoinHandle<Resu
         };
         db_controller::spawn(db_config, rx_db_request, rx_file_request)?;
         player_controller::spawn(tx_sink_request, rx_player_request);
-        sink::spawn_blocking(tx_file_request, rx_sink_request);
+        sink::spawn_blocking(None::<String>, tx_file_request, rx_sink_request)?;
 
         let res = tokio::select! {
             res = run(local_port, tx_db_request, tx_player_request, c_token.clone()) => res,

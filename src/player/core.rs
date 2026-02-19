@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossbeam::channel as cbeam_chan;
+use crossbeam_channel as cbeam_chan;
 use serde::Serialize;
 use std::{
     collections::{HashMap, VecDeque},

@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use crossbeam::channel as cbeam_chan;
+use crossbeam_channel as cbeam_chan;
 use std::{
     fmt::Display,
     path::{Path, PathBuf},

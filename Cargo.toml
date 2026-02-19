@@ -6,7 +6,8 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.100"
 clap = { version = "4.5.57", features = ["derive"] }
-crossbeam = "0.8.4"
+cpal = "0.17.3"
+crossbeam-channel = "0.5.15"
 dunce = "1.0.5"
 erased-serde = "0.4.9"
 futures-util = "0.3.31"
