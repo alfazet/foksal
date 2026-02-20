@@ -131,12 +131,6 @@ impl RawPlayerRequestArgs for RawAddToQueueArgs {}
 
 impl RawPlayerRequestArgs for RawPlayArgs {}
 
-impl RawFileRequest {
-    pub fn requires_response(&self) -> bool {
-        matches!(self, Self::GetChunk { .. })
-    }
-}
-
 impl RemoteRequest {
     pub fn to_bytes(&self) -> Result<Bytes> {
         let s = serde_json::to_string(&self)?;

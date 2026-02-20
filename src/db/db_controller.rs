@@ -8,7 +8,7 @@ use crate::{
     config::DbConfig,
     db::{
         core::{Db, SharedDb},
-        decoder,
+        decoder::{self, Decoder},
         request::{DbRequest, DbRequestKind, ParsedDbRequestArgs},
     },
     net::{
@@ -72,13 +72,16 @@ pub fn spawn(
         ignore_glob_set,
         allowed_exts,
     } = config;
-    decoder::spawn(&music_root, rx_file_request);
     let db = Db::new(&music_root, &ignore_glob_set, &allowed_exts)?;
     let db = SharedDb::new(db);
     db.start_fs_watcher(&music_root, ignore_glob_set, allowed_exts)?;
-
     tokio::spawn(async move {
         run(db, rx_db_request).await;
+    });
+
+    let decoder = Decoder::new(music_root);
+    tokio::spawn(async move {
+        decoder.run(rx_file_request).await;
     });
 
     Ok(())
