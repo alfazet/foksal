@@ -1,0 +1,33 @@
+[package]
+name = "libfoksaldb"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+crossbeam-channel = { workspace = true }
+dunce = { workspace = true }
+erased-serde = { workspace = true }
+futures-util = { workspace = true }
+globset = { workspace = true }
+jwalk = { workspace = true }
+lazy_static = { workspace = true }
+lru = { workspace = true }
+notify = { workspace = true }
+rayon = { workspace = true }
+regex = { workspace = true }
+rkyv = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+symphonia = { workspace = true }
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+unidecode = { workspace = true }
+
+libfoksalcommon = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
