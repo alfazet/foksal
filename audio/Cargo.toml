@@ -5,6 +5,8 @@ edition.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+audioadapter = { workspace = true }
+audioadapter-buffers = { workspace = true }
 cpal = { workspace = true }
 crossbeam-channel = { workspace = true }
 erased-serde = { workspace = true }

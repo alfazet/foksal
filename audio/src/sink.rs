@@ -1,12 +1,12 @@
 use anyhow::Result;
 use crossbeam_channel as cbeam_chan;
 use rkyv::{access, rancor::Error as RkyvError};
-use std::{path::PathBuf, thread};
+use std::{path::PathBuf, thread, time::Duration};
 use tokio::sync::{mpsc as tokio_chan, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
 use tracing::warn;
 
-use crate::device::Device;
+use crate::{device::Device, resampler::ResamplerWrapper};
 use libfoksalcommon::{
     AUDIO_BUF_LEN, ArchivedAudioChunk, AudioSpec, CommonSample,
     net::request::{FileRequest, RawFileRequest},
@@ -33,6 +33,7 @@ struct PlaybackData {
     samples: Samples,
     uri: PathBuf,
     audio_spec: Option<AudioSpec>,
+    resampler: Option<ResamplerWrapper>,
     rx_chunks: Option<oneshot::Receiver<Bytes>>,
 }
 
@@ -114,9 +115,19 @@ impl Sink {
             chunk.n_channels.to_native() as usize,
             chunk.sample_rate.to_native() as usize,
         );
-        self.data
-            .audio_spec
-            .replace(AudioSpec::new(n_channels, sample_rate));
+        if self.data.audio_spec.is_none() {
+            self.data.audio_spec = Some(AudioSpec::new(n_channels, sample_rate));
+        }
+        if self.data.resampler.is_none() {
+            match ResamplerWrapper::try_new(sample_rate, self.device.sample_rate(), n_channels) {
+                Ok(resampler) => self.data.resampler = Some(resampler),
+                Err(e) => {
+                    warn!("resampler init error ({}), stopping", e);
+                    self.state = SinkState::Stopped;
+                    return;
+                }
+            }
+        }
         let new_samples: Vec<_> = chunk
             .samples
             .as_slice()
@@ -164,20 +175,25 @@ impl Sink {
                 }
             }
             if let SinkState::Playing = self.state
-                && let Some(audio_spec) = self.data.audio_spec
+                && let Some(ref mut resampler) = self.data.resampler
                 && self.data.samples.ptr < self.data.samples.inner.len()
             {
                 let samples = &mut self.data.samples;
                 let end = (samples.ptr + AUDIO_BUF_LEN - 1).min(samples.inner.len() - 1);
                 let buf = &samples.inner[samples.ptr..=end];
-                // TODO: resample the buffer
-                for sample in buf {
-                    let _ = tx_samples.send(*sample);
-                }
-                samples.ptr = end + 1;
-                if samples.ptr >= samples.inner.len() {
-                    // TODO: send a message to the player
-                    self.state = SinkState::Stopped;
+                match resampler.resample(buf) {
+                    Ok(resampled) => {
+                        for sample in resampled {
+                            let _ = tx_samples.send(*sample);
+                        }
+                        samples.ptr = end + 1;
+                        if samples.ptr >= samples.inner.len() {
+                            self.state = SinkState::Stopped;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("resampler error ({})", e);
+                    }
                 }
             }
         }

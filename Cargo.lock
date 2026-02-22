@@ -846,6 +846,8 @@ name = "libfoksalaudio"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "audioadapter",
+ "audioadapter-buffers",
  "cpal",
  "crossbeam-channel",
  "erased-serde",
