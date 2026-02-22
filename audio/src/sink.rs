@@ -1,7 +1,7 @@
 use anyhow::Result;
 use crossbeam_channel as cbeam_chan;
 use rkyv::{access, rancor::Error as RkyvError};
-use std::{path::PathBuf, thread, time::Duration};
+use std::{path::PathBuf, thread};
 use tokio::sync::{mpsc as tokio_chan, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
 use tracing::warn;
@@ -11,6 +11,8 @@ use libfoksalcommon::{
     AUDIO_BUF_LEN, ArchivedAudioChunk, AudioSpec, CommonSample,
     net::request::{FileRequest, RawFileRequest},
 };
+
+const REQUEST_SIZE: usize = 8; // multiple of AUDIO_BUF_LEN
 
 pub enum SinkRequest {
     Play(PathBuf),
@@ -94,7 +96,7 @@ impl Sink {
     fn request_more_samples(&mut self, tx_file_request: &tokio_chan::UnboundedSender<FileRequest>) {
         let uri = self.data.uri.clone();
         let start = self.data.samples.inner.len();
-        let end = start + 8 * AUDIO_BUF_LEN;
+        let end = start + REQUEST_SIZE * AUDIO_BUF_LEN;
         let (tx, rx) = oneshot::channel();
         let _ = tx_file_request.send(FileRequest::new(
             RawFileRequest::GetChunk { uri, start, end },
@@ -179,15 +181,15 @@ impl Sink {
                 && self.data.samples.ptr < self.data.samples.inner.len()
             {
                 let samples = &mut self.data.samples;
-                let end = (samples.ptr + AUDIO_BUF_LEN - 1).min(samples.inner.len() - 1);
-                let buf = &samples.inner[samples.ptr..=end];
+                let end = (samples.ptr + resampler.input_len()).min(samples.inner.len());
+                let buf = &samples.inner[samples.ptr..end];
                 match resampler.resample(buf) {
                     Ok(resampled) => {
                         for sample in resampled {
                             let _ = tx_samples.send(*sample);
                         }
-                        samples.ptr = end + 1;
-                        if samples.ptr >= samples.inner.len() {
+                        samples.ptr = end;
+                        if samples.ptr >= samples.inner.len() && samples.got_all {
                             self.state = SinkState::Stopped;
                         }
                     }
