@@ -50,15 +50,19 @@ async fn run(
             PlayerRequestKind::Raw(raw_request) => match raw_request {
                 RawPlayerRequest::AddToQueue(raw_args) => {
                     handle_request_mut(&mut player, raw_args, |player, args| {
-                        player.add_to_queue(args)
+                        player.req_add_to_queue(args)
                     })
                 }
                 RawPlayerRequest::Play(raw_args) => {
-                    handle_request(&player, raw_args, |player, args| player.play(args))
+                    handle_request_mut(&mut player, raw_args, |player, args| player.req_play(args))
                 }
-                RawPlayerRequest::Pause => player.pause(),
-                RawPlayerRequest::Resume => player.resume(),
-                _ => unreachable!(),
+                RawPlayerRequest::Pause => player.req_pause(),
+                RawPlayerRequest::Resume => player.req_resume(),
+                RawPlayerRequest::Toggle => player.req_toggle(),
+                RawPlayerRequest::Stop => player.req_stop(),
+                RawPlayerRequest::Next => player.req_next(),
+                RawPlayerRequest::Prev => player.req_prev(),
+                _ => unreachable!(), // unreachable subscription requests
             },
             PlayerRequestKind::Subscribe(SubscribeArgs {
                 target,

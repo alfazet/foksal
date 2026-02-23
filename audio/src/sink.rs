@@ -39,7 +39,7 @@ struct PlaybackData {
     rx_chunks: Option<oneshot::Receiver<Bytes>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 enum SinkState {
     #[default]
     Stopped,
@@ -88,8 +88,14 @@ impl Sink {
                     self.state = SinkState::Playing;
                 }
             }
+            SinkRequest::Toggle => {
+                self.state = match self.state {
+                    SinkState::Paused => SinkState::Playing,
+                    SinkState::Playing => SinkState::Paused,
+                    _ => self.state,
+                };
+            }
             SinkRequest::Stop => self.state = SinkState::Stopped,
-            _ => todo!(),
         }
     }
 
@@ -167,6 +173,9 @@ impl Sink {
                 match self.data.rx_chunks {
                     Some(ref mut rx) => {
                         if let Ok(bytes) = rx.try_recv() {
+                            // TODO: check bytes for error codes
+                            // return errors on the same channel that we will
+                            // use to send "song is over" messages
                             if !bytes.is_empty() {
                                 self.append_samples(bytes);
                             }

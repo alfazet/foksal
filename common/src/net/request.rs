@@ -59,7 +59,7 @@ pub struct RawAddToQueueArgs {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawPlayArgs {
-    pub uri: PathBuf,
+    pub pos: usize,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -82,6 +82,7 @@ pub enum RawPlayerRequest {
     Pause,
     Resume,
     Toggle,
+    Stop,
     Next,
     Prev,
 }

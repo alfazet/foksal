@@ -19,7 +19,7 @@ pub struct ParsedAddToQueueArgs {
 }
 
 pub struct ParsedPlayArgs {
-    pub uri: PathBuf,
+    pub pos: usize,
 }
 
 pub enum PlayerRequestKind {
@@ -52,7 +52,7 @@ impl TryFrom<RawPlayArgs> for ParsedPlayArgs {
     type Error = anyhow::Error;
 
     fn try_from(raw: RawPlayArgs) -> Result<Self> {
-        Ok(Self { uri: raw.uri })
+        Ok(Self { pos: raw.pos })
     }
 }
 
@@ -65,11 +65,11 @@ impl PlayerRequest {
 impl Player {
     /// adds the song pointed to by `uri` to the playback queue at position `pos` (0-indexed)
     /// to add to the end of the queue, don't specify `pos`
-    pub fn add_to_queue(
+    pub fn req_add_to_queue(
         &mut self,
         ParsedAddToQueueArgs { uri, pos }: ParsedAddToQueueArgs,
     ) -> Response {
-        self.add_to_queue_inner(uri, pos).into()
+        self.add_to_queue(uri, pos).into()
     }
 
     /// TODO: add more fields
@@ -86,7 +86,7 @@ impl Player {
     ///     ],
     /// }
     /// ```
-    pub fn state(&self) -> Response {
+    pub fn req_state(&self) -> Response {
         let queue = self.queue();
         Response::new_ok()
             .with_item("queue", &queue.list())
@@ -94,19 +94,37 @@ impl Player {
             .with_item("queue_pos", &queue.pos())
     }
 
-    pub fn pause(&self) -> Response {
-        self.pause_sink();
+    pub fn req_play(&mut self, ParsedPlayArgs { pos }: ParsedPlayArgs) -> Response {
+        self.play(pos).into()
+    }
+
+    pub fn req_pause(&self) -> Response {
+        self.pause();
         Response::new_ok()
     }
 
-    pub fn resume(&self) -> Response {
-        self.resume_sink();
+    pub fn req_resume(&self) -> Response {
+        self.resume();
         Response::new_ok()
     }
 
-    pub fn play(&self, ParsedPlayArgs { uri }: ParsedPlayArgs) -> Response {
-        // TODO: add this to the queue maybe???
-        self.play_sink(uri);
+    pub fn req_toggle(&self) -> Response {
+        self.toggle();
+        Response::new_ok()
+    }
+
+    pub fn req_stop(&self) -> Response {
+        self.stop();
+        Response::new_ok()
+    }
+
+    pub fn req_next(&mut self) -> Response {
+        self.next();
+        Response::new_ok()
+    }
+
+    pub fn req_prev(&mut self) -> Response {
+        self.prev();
         Response::new_ok()
     }
 }
