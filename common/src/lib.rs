@@ -56,7 +56,7 @@ impl AudioChunk {
 
     pub fn slice(&self, start: usize, end: usize) -> Self {
         let end = end.min(self.samples.len() - 1);
-        let is_final = end >= self.samples.len();
+        let is_final = end >= self.samples.len() - 1;
 
         Self {
             samples: self.samples[start..=end].to_vec(),

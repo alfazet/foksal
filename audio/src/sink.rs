@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use crossbeam_channel as cbeam_chan;
 use rkyv::{access, rancor::Error as RkyvError};
 use std::{path::PathBuf, thread};
@@ -20,7 +20,11 @@ pub enum SinkRequest {
     Pause,
     Resume,
     Toggle,
-    // TODO: Seek
+    // TODO: Seek, VolDelta
+}
+
+pub enum SinkResponse {
+    SongOver,
 }
 
 #[derive(Default)]
@@ -51,6 +55,7 @@ struct Sink {
     device: Device,
     state: SinkState,
     data: PlaybackData,
+    tx_response: tokio_chan::UnboundedSender<SinkResponse>,
 }
 
 impl Samples {
@@ -62,11 +67,12 @@ impl Samples {
 }
 
 impl Sink {
-    fn new(device: Device) -> Self {
+    fn new(device: Device, tx_response: tokio_chan::UnboundedSender<SinkResponse>) -> Self {
         Self {
             device,
             state: Default::default(),
             data: Default::default(),
+            tx_response,
         }
     }
 
@@ -130,7 +136,8 @@ impl Sink {
             match ResamplerWrapper::try_new(sample_rate, self.device.sample_rate(), n_channels) {
                 Ok(resampler) => self.data.resampler = Some(resampler),
                 Err(e) => {
-                    warn!("resampler init error ({}), stopping", e);
+                    warn!("resampler init error ({}), skipping", e);
+                    let _ = self.tx_response.send(SinkResponse::SongOver);
                     self.state = SinkState::Stopped;
                     return;
                 }
@@ -190,15 +197,16 @@ impl Sink {
                 && self.data.samples.ptr < self.data.samples.inner.len()
             {
                 let samples = &mut self.data.samples;
-                let end = (samples.ptr + resampler.input_len()).min(samples.inner.len());
-                let buf = &samples.inner[samples.ptr..end];
+                let end = (samples.ptr + resampler.input_len() - 1).min(samples.inner.len() - 1);
+                let buf = &samples.inner[samples.ptr..=end];
                 match resampler.resample(buf) {
                     Ok(resampled) => {
                         for sample in resampled {
                             let _ = tx_samples.send(*sample);
                         }
-                        samples.ptr = end;
+                        samples.ptr = end + 1;
                         if samples.ptr >= samples.inner.len() && samples.got_all {
+                            let _ = self.tx_response.send(SinkResponse::SongOver);
                             self.state = SinkState::Stopped;
                         }
                     }
@@ -215,11 +223,12 @@ pub fn spawn_blocking(
     device_name: impl AsRef<str>,
     tx_file_request: tokio_chan::UnboundedSender<FileRequest>,
     rx_sink_request: cbeam_chan::Receiver<SinkRequest>,
+    tx_sink_response: tokio_chan::UnboundedSender<SinkResponse>,
 ) -> Result<()> {
     let mut device = Device::try_new(device_name).or_else(|_| Device::try_default())?;
     let (tx_samples, rx_samples) = cbeam_chan::bounded(AUDIO_BUF_LEN);
     device.init(rx_samples)?;
-    let sink = Sink::new(device);
+    let sink = Sink::new(device, tx_sink_response);
     thread::spawn(move || sink.run(tx_samples, tx_file_request, rx_sink_request));
 
     Ok(())

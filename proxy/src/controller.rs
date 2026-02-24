@@ -256,6 +256,7 @@ pub fn spawn(
     tokio::spawn(async move {
         let (tx_player_request, rx_player_request) = tokio_chan::unbounded_channel();
         let (tx_file_request, rx_file_request) = tokio_chan::unbounded_channel();
+        let (tx_sink_response, rx_sink_response) = tokio_chan::unbounded_channel();
         let (tx_sink_request, rx_sink_request) = cbeam_chan::unbounded();
 
         let ProxyConfig {
@@ -263,8 +264,13 @@ pub fn spawn(
             audio_backend,
             ..
         } = config;
-        player_controller::spawn(tx_sink_request, rx_player_request);
-        sink::spawn_blocking(audio_backend, tx_file_request, rx_sink_request)?;
+        player_controller::spawn(tx_sink_request, rx_player_request, rx_sink_response);
+        sink::spawn_blocking(
+            audio_backend,
+            tx_file_request,
+            rx_sink_request,
+            tx_sink_response,
+        )?;
 
         let res = tokio::select! {
             res = run(ws_stream, local_port, tx_player_request, rx_file_request, c_token.clone()) => res,

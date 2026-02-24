@@ -187,12 +187,12 @@ impl SharedDb {
         db.remove_subscriber(target, addr);
     }
 
-    pub fn metadata(&self, args: ParsedMetadataArgs) -> Response {
+    pub fn req_metadata(&self, args: ParsedMetadataArgs) -> Response {
         let db = self.inner.read().unwrap();
         db.metadata(args)
     }
 
-    pub fn select(&self, args: ParsedSelectArgs) -> Response {
+    pub fn req_select(&self, args: ParsedSelectArgs) -> Response {
         let db = self.inner.read().unwrap();
         db.select(args)
     }

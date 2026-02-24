@@ -35,12 +35,14 @@ async fn run(db: SharedDb, mut rx_db_request: tokio_chan::UnboundedReceiver<DbRe
         let response = match kind {
             DbRequestKind::Raw(raw_request) => match raw_request {
                 RawDbRequest::Metadata(raw_args) => {
-                    handle_request(&db, raw_args, |db, parsed_args| db.metadata(parsed_args))
+                    handle_request(&db, raw_args, |db, parsed_args| {
+                        db.req_metadata(parsed_args)
+                    })
                 }
                 RawDbRequest::Select(raw_args) => {
-                    handle_request(&db, raw_args, |db, parsed_args| db.select(parsed_args))
+                    handle_request(&db, raw_args, |db, parsed_args| db.req_select(parsed_args))
                 }
-                _ => unreachable!(),
+                _ => unreachable!(), // subscription requests are handled below
             },
             DbRequestKind::Subscribe(SubscribeArgs {
                 target,
