@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crossbeam_channel as cbeam_chan;
-use rkyv::{access, rancor::Error as RkyvError};
+use rkyv::{access, rancor::Error as RkyvError, util::AlignedVec};
 use serde::Serialize;
 use std::{
     path::{Path, PathBuf},
@@ -217,7 +217,9 @@ impl Sink {
                 match self.data.rx_chunks {
                     Some(ref mut rx) => {
                         if let Ok(bytes) = rx.try_recv() {
-                            match access::<ArchivedAudioChunk, RkyvError>(&bytes) {
+                            let mut aligned: AlignedVec = AlignedVec::with_capacity(bytes.len());
+                            aligned.extend_from_slice(&bytes);
+                            match access::<ArchivedAudioChunk, RkyvError>(&aligned) {
                                 Ok(chunk) => {
                                     self.append_samples(chunk);
                                     self.data.rx_chunks = None;
