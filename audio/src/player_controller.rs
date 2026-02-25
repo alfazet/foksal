@@ -59,12 +59,12 @@ async fn run(
                         RawPlayerRequest::Play(raw_args) => {
                             handle_request_mut(&mut player, raw_args, |player, args| player.req_play(args))
                         }
-                        RawPlayerRequest::Pause => player.req_pause(),
-                        RawPlayerRequest::Resume => player.req_resume(),
-                        RawPlayerRequest::Toggle => player.req_toggle(),
-                        RawPlayerRequest::Stop => player.req_stop(),
-                        RawPlayerRequest::Next => player.req_next(),
-                        RawPlayerRequest::Prev => player.req_prev(),
+                        RawPlayerRequest::Pause => player.req_pause().await,
+                        RawPlayerRequest::Resume => player.req_resume().await,
+                        RawPlayerRequest::Toggle => player.req_toggle().await,
+                        RawPlayerRequest::Stop => player.req_stop().await,
+                        RawPlayerRequest::Next => player.req_next().await,
+                        RawPlayerRequest::Prev => player.req_prev().await,
                         _ => unreachable!(), // subscription requests are handled below
                     },
                     PlayerRequestKind::Subscribe(SubscribeArgs {
@@ -85,7 +85,7 @@ async fn run(
             Some(response) = rx_sink_response.recv() => {
                 match response {
                     SinkResponse::SongOver => {
-                        player.next();
+                        player.next().await;
                     }
                 }
             }

@@ -54,8 +54,8 @@ impl Response {
     }
 
     pub fn to_bytes(&self) -> Result<Bytes> {
-        let s = serde_json::to_string(&self.0)?;
-        Ok(s.as_bytes().to_vec().into())
+        let s = serde_json::to_vec(&self.0)?;
+        Ok(s.into())
     }
 
     pub fn new_ok() -> Self {
@@ -99,8 +99,8 @@ impl EventNotif {
     }
 
     pub fn to_bytes(&self) -> Result<Bytes> {
-        let s = serde_json::to_string(&self.value)?; // TODO: use to_vec()?
-        Ok(s.as_bytes().to_vec().into())
+        let s = serde_json::to_vec(&self.value)?;
+        Ok(s.into())
     }
 
     pub fn to_text(&self) -> Result<Utf8Bytes> {
@@ -115,8 +115,8 @@ impl RemoteResponse {
     }
 
     pub fn to_bytes(&self) -> Result<Bytes> {
-        let s = serde_json::to_string(&self)?;
-        Ok(s.as_bytes().to_vec().into())
+        let s = serde_json::to_vec(&self)?;
+        Ok(s.into())
     }
 
     pub fn to_text(&self) -> Result<Utf8Bytes> {

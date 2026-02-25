@@ -98,33 +98,33 @@ impl Player {
         self.play(pos).into()
     }
 
-    pub fn req_pause(&self) -> Response {
-        self.pause();
+    pub async fn req_pause(&self) -> Response {
+        self.pause().await;
         Response::new_ok()
     }
 
-    pub fn req_resume(&self) -> Response {
-        self.resume();
+    pub async fn req_resume(&self) -> Response {
+        self.resume().await;
         Response::new_ok()
     }
 
-    pub fn req_toggle(&self) -> Response {
-        self.toggle();
+    pub async fn req_toggle(&self) -> Response {
+        self.toggle().await;
         Response::new_ok()
     }
 
-    pub fn req_stop(&self) -> Response {
-        self.stop();
+    pub async fn req_stop(&self) -> Response {
+        self.stop().await;
         Response::new_ok()
     }
 
-    pub fn req_next(&mut self) -> Response {
-        self.next();
+    pub async fn req_next(&mut self) -> Response {
+        self.next().await;
         Response::new_ok()
     }
 
-    pub fn req_prev(&mut self) -> Response {
-        self.prev();
+    pub async fn req_prev(&mut self) -> Response {
+        self.prev().await;
         Response::new_ok()
     }
 }

@@ -1,27 +1,23 @@
-use anyhow::{Result, ensure};
+use anyhow::Result;
 use crossbeam_channel as cbeam_chan;
 use rkyv::{access, rancor::Error as RkyvError};
 use serde::Serialize;
-use std::{fmt::Display, path::PathBuf, thread};
+use std::{
+    path::{Path, PathBuf},
+    thread,
+};
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc as tokio_chan, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
-use tracing::warn;
 
 use crate::{device::Device, resampler::ResamplerWrapper};
 use libfoksalcommon::{
-    AUDIO_BUF_LEN, ArchivedAudioChunk, AudioChunk, AudioSpec, CommonSample,
+    AUDIO_BUF_LEN, ArchivedAudioChunk, AudioSpec, CommonSample,
     net::request::{FileRequest, RawFileRequest},
 };
 
 const REQUEST_SIZE: usize = 8; // multiple of AUDIO_BUF_LEN
 
-// TODO: set some byte constants for different decoder error types
-// and send that instead of empty
-//
-// make sure to send SongOver whenever an error occurs
-// send all SinkErrors on the tx_sink_response channel
-// and log them upon receiving (or send them the same way events are being sent)
 #[derive(Clone, Debug, Error, Serialize)]
 #[serde(tag = "error", rename_all = "snake_case")]
 pub enum SinkError {
@@ -32,6 +28,8 @@ pub enum SinkError {
 }
 
 pub enum SinkRequest {
+    GetState(oneshot::Sender<SinkState>),
+    GetCurrentSong(oneshot::Sender<Option<PathBuf>>),
     Play(PathBuf),
     Stop,
     Pause,
@@ -60,8 +58,9 @@ struct PlaybackData {
     rx_chunks: Option<oneshot::Receiver<Bytes>>,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-enum SinkState {
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SinkState {
     #[default]
     Stopped,
     Playing,
@@ -108,12 +107,21 @@ impl Sink {
 
     fn err_and_stop(&mut self, err: SinkError) {
         let _ = self.tx_error.send(err);
-        let _ = self.tx_response.send(SinkResponse::SongOver);
         self.state = SinkState::Stopped;
     }
 
     fn handle_request(&mut self, request: SinkRequest) {
         match request {
+            SinkRequest::GetState(respond_to) => {
+                let _ = respond_to.send(self.state);
+            }
+            SinkRequest::GetCurrentSong(respond_to) => {
+                let response = match self.state {
+                    SinkState::Stopped => None,
+                    _ => Some(self.data.uri.clone()),
+                };
+                let _ = respond_to.send(response);
+            }
             SinkRequest::Play(uri) => {
                 self.state = SinkState::Playing;
                 self.data = Default::default();
@@ -205,7 +213,7 @@ impl Sink {
             if let Some(request) = request {
                 self.handle_request(request);
             }
-            if !self.data.samples.got_all {
+            if !matches!(self.state, SinkState::Stopped) && !self.data.samples.got_all {
                 match self.data.rx_chunks {
                     Some(ref mut rx) => {
                         if let Ok(bytes) = rx.try_recv() {

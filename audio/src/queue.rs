@@ -1,9 +1,14 @@
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, anyhow, ensure};
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 
-const ERR_OUT_OF_BOUNDS: &str = "queue index out of bounds";
+#[derive(Debug, Error)]
+enum QueueError {
+    #[error("index {index} out of bounds (length: {len})")]
+    OutOfBounds { index: usize, len: usize },
+}
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct Queue {
     list: Vec<PathBuf>,
     pos: Option<usize>,
@@ -34,14 +39,16 @@ impl Queue {
         self.list
             .get(pos)
             .map(|uri| uri.as_path())
-            .ok_or(anyhow!(ERR_OUT_OF_BOUNDS))
+            .ok_or(anyhow!(QueueError::OutOfBounds {
+                index: pos,
+                len: self.list.len()
+            }))
     }
 
     pub fn insert(&mut self, uri: impl Into<PathBuf>, pos: usize) -> Result<()> {
         let len = self.list.len();
-        if pos > len {
-            bail!(ERR_OUT_OF_BOUNDS);
-        } else if pos == len {
+        ensure!(pos <= len, QueueError::OutOfBounds { index: pos, len });
+        if pos == len {
             self.list.push(uri.into());
         } else {
             self.list.insert(pos, uri.into());
@@ -55,12 +62,16 @@ impl Queue {
     }
 
     pub fn move_to(&mut self, pos: usize) -> Result<()> {
-        if pos < self.list.len() {
-            self.pos = Some(pos);
-            Ok(())
-        } else {
-            bail!(ERR_OUT_OF_BOUNDS);
-        }
+        ensure!(
+            pos < self.list.len(),
+            QueueError::OutOfBounds {
+                index: pos,
+                len: self.list.len()
+            }
+        );
+        self.pos = Some(pos);
+
+        Ok(())
     }
 
     pub fn move_to_next(&mut self) {

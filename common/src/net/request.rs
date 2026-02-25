@@ -33,6 +33,7 @@ pub enum DbSubTarget {
 #[serde(tag = "to", rename_all = "snake_case")]
 pub enum PlayerSubTarget {
     Queue,
+    Sink,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -159,7 +160,7 @@ impl FileRequest {
 
 impl RemoteRequest {
     pub fn to_bytes(&self) -> Result<Bytes> {
-        let s = serde_json::to_string(&self)?;
-        Ok(s.as_bytes().to_vec().into())
+        let s = serde_json::to_vec(&self)?;
+        Ok(s.into())
     }
 }

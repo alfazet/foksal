@@ -1,10 +1,17 @@
 use anyhow::Result;
 use crossbeam_channel as cbeam_chan;
 use serde::Serialize;
-use std::{collections::HashMap, net::SocketAddr, path::PathBuf};
-use tokio::sync::mpsc as tokio_chan;
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+};
+use tokio::sync::{mpsc as tokio_chan, oneshot};
 
-use crate::{queue::Queue, sink::SinkRequest};
+use crate::{
+    queue::Queue,
+    sink::{SinkRequest, SinkState},
+};
 use libfoksalcommon::net::{request::PlayerSubTarget, response::EventNotif};
 
 type PlayerSubscribersMap =
@@ -15,6 +22,8 @@ type PlayerSubscribersMap =
 pub enum PlayerEvent {
     QueueContent { queue: Vec<PathBuf> },
     QueuePos { pos: Option<usize> },
+    CurrentSong { uri: PathBuf },
+    SinkState { state: SinkState },
 }
 
 pub struct Player {
@@ -83,31 +92,35 @@ impl Player {
         Ok(())
     }
 
-    pub fn pause(&self) {
+    pub async fn pause(&self) {
         let _ = self.tx_sink_request.send(SinkRequest::Pause);
-        // TODO: notify subscribers to sink evenets
+        let state = self.sink_state().await;
+        self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::SinkState { state });
     }
 
-    pub fn resume(&self) {
+    pub async fn resume(&self) {
         let _ = self.tx_sink_request.send(SinkRequest::Resume);
-        // TODO: notify subscribers to sink evenets
+        let state = self.sink_state().await;
+        self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::SinkState { state });
     }
 
-    pub fn toggle(&self) {
+    pub async fn toggle(&self) {
         let _ = self.tx_sink_request.send(SinkRequest::Toggle);
-        // TODO: notify subscribers to sink evenets
+        let state = self.sink_state().await;
+        self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::SinkState { state });
     }
 
-    pub fn stop(&self) {
+    pub async fn stop(&self) {
         let _ = self.tx_sink_request.send(SinkRequest::Stop);
-        // TODO: notify subscribers to sink evenets
+        let state = self.sink_state().await;
+        self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::SinkState { state });
     }
 
-    pub fn next(&mut self) {
+    pub async fn next(&mut self) {
         self.queue.move_to_next();
         match self.queue.cur() {
             Some(uri) => self.play_from_uri(uri),
-            None => self.stop(),
+            None => self.stop().await,
         }
 
         self.notify_subscribers(
@@ -118,11 +131,11 @@ impl Player {
         );
     }
 
-    pub fn prev(&mut self) {
+    pub async fn prev(&mut self) {
         self.queue.move_to_prev();
         match self.queue.cur() {
             Some(uri) => self.play_from_uri(uri),
-            None => self.stop(),
+            None => self.stop().await,
         }
 
         self.notify_subscribers(
@@ -133,9 +146,22 @@ impl Player {
         );
     }
 
-    fn play_from_uri(&self, uri: impl Into<PathBuf>) {
-        let _ = self.tx_sink_request.send(SinkRequest::Play(uri.into()));
-        // TODO: notify subscribers to sink evenets
+    async fn sink_state(&self) -> SinkState {
+        let (tx, rx) = oneshot::channel();
+        let _ = self.tx_sink_request.send(SinkRequest::GetState(tx));
+        rx.await.unwrap_or_default()
+    }
+
+    fn play_from_uri(&self, uri: impl AsRef<Path>) {
+        let _ = self
+            .tx_sink_request
+            .send(SinkRequest::Play(uri.as_ref().to_path_buf()));
+        self.notify_subscribers(
+            PlayerSubTarget::Sink,
+            PlayerEvent::CurrentSong {
+                uri: uri.as_ref().to_path_buf(),
+            },
+        );
     }
 
     fn notify_subscribers(&self, target: PlayerSubTarget, event: PlayerEvent) {

@@ -151,13 +151,15 @@ impl Decoder {
                     sample_rate,
                 }) = audio_spec
                 {
-                    while let Some(DecoderRequest {
-                        start,
-                        end,
-                        respond_to,
-                    }) = requests.pop()
-                        && end < samples.len()
+                    // TODO: rewrite with .pop_if() once it stabilizes
+                    while let Some(DecoderRequest { end, .. }) = requests.peek()
+                        && *end < samples.len()
                     {
+                        let DecoderRequest {
+                            start,
+                            end,
+                            respond_to,
+                        } = requests.pop().unwrap();
                         let requested_samples = samples[start..=end].to_vec();
                         let chunk =
                             AudioChunk::new(requested_samples, n_channels, sample_rate, false);
