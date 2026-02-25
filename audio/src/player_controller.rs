@@ -46,7 +46,6 @@ async fn run(
     mut rx_sink_response: tokio_chan::UnboundedReceiver<SinkResponse>,
 ) {
     let mut player = Player::new(tx_sink_request);
-
     loop {
         tokio::select! {
             Some(PlayerRequest { kind, respond_to }) = rx_player_request.recv() => {

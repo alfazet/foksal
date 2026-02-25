@@ -4,7 +4,7 @@ use futures_util::{SinkExt, StreamExt};
 use libfoksalaudio::{
     player_controller,
     request::{PlayerRequest, PlayerRequestKind},
-    sink,
+    sink::{self, SinkError},
 };
 use libfoksalcommon::net::{
     request::{
@@ -20,7 +20,7 @@ use std::{
 };
 use tokio::{
     net::{TcpListener, TcpStream},
-    sync::{mpsc as tokio_chan, oneshot},
+    sync::{broadcast, mpsc as tokio_chan, oneshot},
     task::JoinHandle,
     time,
 };
@@ -47,6 +47,7 @@ async fn handle_client(
     tx_player_request: tokio_chan::UnboundedSender<PlayerRequest>,
     tx_remote_request: tokio_chan::UnboundedSender<RemoteRequest>,
     mut rx_remote_response: tokio_chan::UnboundedReceiver<RemoteResponseInner>,
+    mut rx_async_error: broadcast::Receiver<SinkError>,
     c_token: CancellationToken,
 ) -> Result<()> {
     let ws_stream = tokio_tungstenite::accept_async(tcp_stream).await?;
@@ -79,6 +80,16 @@ async fn handle_client(
     tokio::spawn(async move {
         while let Some(notif) = rx_event.recv().await {
             if let Ok(bytes) = notif.to_bytes() {
+                let _ = tx_msg_clone.send(WsMessage::Binary(bytes));
+            }
+        }
+    });
+
+    // task to send errors to the client
+    let tx_msg_clone = tx_msg.clone();
+    tokio::spawn(async move {
+        while let Ok(error) = rx_async_error.recv().await {
+            if let Ok(bytes) = error.to_bytes() {
                 let _ = tx_msg_clone.send(WsMessage::Binary(bytes));
             }
         }
@@ -147,6 +158,7 @@ async fn run(
     local_port: u16,
     tx_player_request: tokio_chan::UnboundedSender<PlayerRequest>,
     mut rx_file_request: tokio_chan::UnboundedReceiver<FileRequest>,
+    rx_async_error: broadcast::Receiver<SinkError>,
     c_token: CancellationToken,
 ) -> Result<()> {
     let listener = TcpListener::bind(format!("127.0.0.1:{}", local_port)).await?;
@@ -233,10 +245,11 @@ async fn run(
                 }
                 let tx_player_request_clone = tx_player_request.clone();
                 let tx_remote_request_clone = tx_remote_request.clone();
+                let rx_async_error_clone = rx_async_error.resubscribe();
                 let c_token_clone = c_token.clone();
                 let clients_clone = Arc::clone(&clients);
                 tokio::spawn(async move {
-                    let res = handle_client(tcp_stream, addr, tx_player_request_clone, tx_remote_request_clone, rx_remote_response, c_token_clone).await;
+                    let res = handle_client(tcp_stream, addr, tx_player_request_clone, tx_remote_request_clone, rx_remote_response, rx_async_error_clone, c_token_clone).await;
                     if let Err(e) = res {
                         error!("client handler error ({})", e);
                     }
@@ -258,6 +271,7 @@ pub fn spawn(
         let (tx_file_request, rx_file_request) = tokio_chan::unbounded_channel();
         let (tx_sink_response, rx_sink_response) = tokio_chan::unbounded_channel();
         let (tx_sink_request, rx_sink_request) = cbeam_chan::unbounded();
+        let (tx_async_error, rx_async_error) = broadcast::channel(1);
 
         let ProxyConfig {
             local_port,
@@ -270,10 +284,11 @@ pub fn spawn(
             tx_file_request,
             rx_sink_request,
             tx_sink_response,
+            tx_async_error,
         )?;
 
         let res = tokio::select! {
-            res = run(ws_stream, local_port, tx_player_request, rx_file_request, c_token.clone()) => res,
+            res = run(ws_stream, local_port, tx_player_request, rx_file_request, rx_async_error, c_token.clone()) => res,
             _ = c_token.cancelled() => Ok(()),
         };
         c_token.cancel();

@@ -1,18 +1,35 @@
 use anyhow::{Result, ensure};
 use crossbeam_channel as cbeam_chan;
 use rkyv::{access, rancor::Error as RkyvError};
-use std::{path::PathBuf, thread};
-use tokio::sync::{mpsc as tokio_chan, oneshot};
+use serde::Serialize;
+use std::{fmt::Display, path::PathBuf, thread};
+use thiserror::Error;
+use tokio::sync::{broadcast, mpsc as tokio_chan, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
 use tracing::warn;
 
 use crate::{device::Device, resampler::ResamplerWrapper};
 use libfoksalcommon::{
-    AUDIO_BUF_LEN, ArchivedAudioChunk, AudioSpec, CommonSample,
+    AUDIO_BUF_LEN, ArchivedAudioChunk, AudioChunk, AudioSpec, CommonSample,
     net::request::{FileRequest, RawFileRequest},
 };
 
 const REQUEST_SIZE: usize = 8; // multiple of AUDIO_BUF_LEN
+
+// TODO: set some byte constants for different decoder error types
+// and send that instead of empty
+//
+// make sure to send SongOver whenever an error occurs
+// send all SinkErrors on the tx_sink_response channel
+// and log them upon receiving (or send them the same way events are being sent)
+#[derive(Clone, Debug, Error, Serialize)]
+#[serde(tag = "error", rename_all = "snake_case")]
+pub enum SinkError {
+    #[error("decoder error ({reason})")]
+    Decoder { reason: String },
+    #[error("resampler error ({reason})")]
+    Resampler { reason: String },
+}
 
 pub enum SinkRequest {
     Play(PathBuf),
@@ -56,6 +73,14 @@ struct Sink {
     state: SinkState,
     data: PlaybackData,
     tx_response: tokio_chan::UnboundedSender<SinkResponse>,
+    tx_error: broadcast::Sender<SinkError>,
+}
+
+impl SinkError {
+    pub fn to_bytes(&self) -> Result<Bytes> {
+        let s = serde_json::to_vec(&self)?;
+        Ok(s.into())
+    }
 }
 
 impl Samples {
@@ -67,13 +92,24 @@ impl Samples {
 }
 
 impl Sink {
-    fn new(device: Device, tx_response: tokio_chan::UnboundedSender<SinkResponse>) -> Self {
+    fn new(
+        device: Device,
+        tx_response: tokio_chan::UnboundedSender<SinkResponse>,
+        tx_error: broadcast::Sender<SinkError>,
+    ) -> Self {
         Self {
             device,
             state: Default::default(),
             data: Default::default(),
             tx_response,
+            tx_error,
         }
+    }
+
+    fn err_and_stop(&mut self, err: SinkError) {
+        let _ = self.tx_error.send(err);
+        let _ = self.tx_response.send(SinkResponse::SongOver);
+        self.state = SinkState::Stopped;
     }
 
     fn handle_request(&mut self, request: SinkRequest) {
@@ -117,14 +153,7 @@ impl Sink {
         self.data.rx_chunks.replace(rx);
     }
 
-    fn append_samples(&mut self, bytes: Bytes) {
-        let chunk = match access::<ArchivedAudioChunk, RkyvError>(&bytes) {
-            Ok(chunk) => chunk,
-            Err(_) => {
-                warn!("corrupted audio chunk");
-                return;
-            }
-        };
+    fn append_samples(&mut self, chunk: &ArchivedAudioChunk) {
         let (n_channels, sample_rate) = (
             chunk.n_channels.to_native() as usize,
             chunk.sample_rate.to_native() as usize,
@@ -136,9 +165,9 @@ impl Sink {
             match ResamplerWrapper::try_new(sample_rate, self.device.sample_rate(), n_channels) {
                 Ok(resampler) => self.data.resampler = Some(resampler),
                 Err(e) => {
-                    warn!("resampler init error ({}), skipping", e);
-                    let _ = self.tx_response.send(SinkResponse::SongOver);
-                    self.state = SinkState::Stopped;
+                    self.err_and_stop(SinkError::Resampler {
+                        reason: e.to_string(),
+                    });
                     return;
                 }
             }
@@ -180,13 +209,17 @@ impl Sink {
                 match self.data.rx_chunks {
                     Some(ref mut rx) => {
                         if let Ok(bytes) = rx.try_recv() {
-                            // TODO: check bytes for error codes
-                            // return errors on the same channel that we will
-                            // use to send "song is over" messages
-                            if !bytes.is_empty() {
-                                self.append_samples(bytes);
+                            match access::<ArchivedAudioChunk, RkyvError>(&bytes) {
+                                Ok(chunk) => {
+                                    self.append_samples(chunk);
+                                    self.data.rx_chunks = None;
+                                }
+                                Err(_) => {
+                                    self.err_and_stop(SinkError::Decoder {
+                                        reason: String::from_utf8_lossy(&bytes).to_string(),
+                                    });
+                                }
                             }
-                            self.data.rx_chunks = None;
                         }
                     }
                     None => self.request_more_samples(&tx_file_request),
@@ -211,7 +244,9 @@ impl Sink {
                         }
                     }
                     Err(e) => {
-                        warn!("resampler error ({})", e);
+                        self.err_and_stop(SinkError::Resampler {
+                            reason: e.to_string(),
+                        });
                     }
                 }
             }
@@ -224,11 +259,12 @@ pub fn spawn_blocking(
     tx_file_request: tokio_chan::UnboundedSender<FileRequest>,
     rx_sink_request: cbeam_chan::Receiver<SinkRequest>,
     tx_sink_response: tokio_chan::UnboundedSender<SinkResponse>,
+    tx_error: broadcast::Sender<SinkError>,
 ) -> Result<()> {
     let mut device = Device::try_new(device_name).or_else(|_| Device::try_default())?;
     let (tx_samples, rx_samples) = cbeam_chan::bounded(AUDIO_BUF_LEN);
     device.init(rx_samples)?;
-    let sink = Sink::new(device, tx_sink_response);
+    let sink = Sink::new(device, tx_sink_response, tx_error);
     thread::spawn(move || sink.run(tx_samples, tx_file_request, rx_sink_request));
 
     Ok(())

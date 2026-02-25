@@ -85,10 +85,7 @@ impl Decoder {
                         Ok(chunk) => {
                             Bytes::from_owner(rkyv::to_bytes::<RkyvError>(&chunk).unwrap())
                         }
-                        Err(e) => {
-                            error!("decoder error ({})", e);
-                            Bytes::new()
-                        }
+                        Err(e) => Bytes::from(e.to_string().into_bytes()),
                     };
                     let _ = respond_to.send(bytes);
                 }
