@@ -127,4 +127,14 @@ impl Player {
         self.prev().await;
         Response::new_ok()
     }
+
+    pub fn req_queue_seq(&mut self) -> Response {
+        self.queue_seq();
+        Response::new_ok()
+    }
+
+    pub fn req_queue_random(&mut self) -> Response {
+        self.queue_random();
+        Response::new_ok()
+    }
 }

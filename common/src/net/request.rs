@@ -86,6 +86,8 @@ pub enum RawPlayerRequest {
     Stop,
     Next,
     Prev,
+    QueueSeq,
+    QueueRandom,
 }
 
 #[derive(Deserialize, Serialize)]

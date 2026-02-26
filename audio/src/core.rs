@@ -58,7 +58,11 @@ impl Player {
         self.subscribers.remove(&(target, addr));
     }
 
-    pub fn add_to_queue(&mut self, uri: impl Into<PathBuf>, pos: Option<usize>) -> Result<()> {
+    pub fn add_to_queue(
+        &mut self,
+        uri: impl AsRef<Path> + Into<PathBuf>,
+        pos: Option<usize>,
+    ) -> Result<()> {
         let res = match pos {
             Some(pos) => self.queue.insert(uri, pos),
             None => {
@@ -144,6 +148,14 @@ impl Player {
                 pos: self.queue.pos(),
             },
         );
+    }
+
+    pub fn queue_seq(&mut self) {
+        self.queue.set_mode_seq();
+    }
+
+    pub fn queue_random(&mut self) {
+        self.queue.set_mode_random();
     }
 
     async fn sink_state(&self) -> SinkState {

@@ -65,6 +65,8 @@ async fn run(
                         RawPlayerRequest::Stop => player.req_stop().await,
                         RawPlayerRequest::Next => player.req_next().await,
                         RawPlayerRequest::Prev => player.req_prev().await,
+                        RawPlayerRequest::QueueSeq => player.req_queue_seq(),
+                        RawPlayerRequest::QueueRandom => player.req_queue_random(),
                         _ => unreachable!(), // subscription requests are handled below
                     },
                     PlayerRequestKind::Subscribe(SubscribeArgs {
