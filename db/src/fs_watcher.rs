@@ -31,6 +31,7 @@ pub fn run(
                 && fs_utils::ext_matches(uri, &allowed_exts).is_some_and(|x| x)
                 && !ignore_globset.is_match(uri)
             {
+                let uri = fs_utils::strip_or_default(uri, &root);
                 match event.kind {
                     EventKind::Create(_) => {
                         if let Err(e) = db.create(uri) {

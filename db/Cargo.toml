@@ -14,7 +14,6 @@ jwalk = { workspace = true }
 lazy_static = { workspace = true }
 lru = { workspace = true }
 notify = { workspace = true }
-rayon = { workspace = true }
 regex = { workspace = true }
 rkyv = { workspace = true }
 serde = { workspace = true }

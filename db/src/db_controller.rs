@@ -68,9 +68,10 @@ pub fn spawn(
     rx_db_request: tokio_chan::UnboundedReceiver<DbRequest>,
     rx_file_request: tokio_chan::UnboundedReceiver<FileRequest>,
 ) -> Result<()> {
-    let db = Db::new(music_root.as_ref(), &ignore_globset, &allowed_exts)?;
+    let music_root = dunce::canonicalize(music_root.as_ref())?;
+    let db = Db::new(&music_root, &ignore_globset, &allowed_exts)?;
     let db = SharedDb::new(db);
-    db.start_fs_watcher(music_root.as_ref(), ignore_globset, allowed_exts)?;
+    db.start_fs_watcher(&music_root, ignore_globset, allowed_exts)?;
     tokio::spawn(async move {
         run(db, rx_db_request).await;
     });

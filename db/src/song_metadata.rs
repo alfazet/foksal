@@ -1,5 +1,8 @@
 use anyhow::{Result, anyhow};
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 use symphonia::core::meta::MetadataRevision;
 
 use crate::{filter::ParsedFilter, fs_utils, tag::TagKey};
@@ -29,8 +32,8 @@ impl From<&MetadataRevision> for SongMetadata {
 }
 
 impl SongMetadata {
-    pub fn try_new(uri: impl AsRef<Path>) -> Result<Self> {
-        let mut probe_res = fs_utils::get_probe_result(&uri)?;
+    pub fn try_new(uri: impl AsRef<Path>, root: impl Into<PathBuf>) -> Result<Self> {
+        let mut probe_res = fs_utils::get_probe_result(fs_utils::to_absolute(&uri, root))?;
         let from_container = probe_res
             .format
             .metadata()

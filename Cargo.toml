@@ -22,7 +22,6 @@ jwalk = "0.8.1"
 lazy_static = "1.5.0"
 lru = "0.16.3"
 notify = { version = "8.2.0", features = ["crossbeam-channel"] }
-rayon = "1.11.0"
 regex = "1.12.3"
 rkyv = "0.8.15"
 rubato = "1.0.1"

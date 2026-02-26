@@ -1,6 +1,5 @@
 use anyhow::Result;
 use globset::GlobSet;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -27,17 +26,16 @@ pub enum DbEvent {
 
 /// TODO:
 /// - keep m3u playlists
-/// - allow relative paths in requests
 #[derive(Default)]
 pub struct Db {
     pub table: Table,
-    music_root: PathBuf,
+    pub music_root: PathBuf,
     subscribers: DbSubscribersMap,
 }
 
 pub struct SharedDb {
     pub inner: Arc<RwLock<Db>>,
-    music_root: PathBuf,
+    pub music_root: PathBuf,
 }
 
 impl Db {
@@ -47,8 +45,8 @@ impl Db {
         allowed_exts: &[impl AsRef<str>],
     ) -> Result<Self> {
         let uris = fs_utils::walk_dir(&music_root, ignore_globset.clone(), allowed_exts)?;
-        let table = Self::init_table(uris);
-        let music_root = music_root.as_ref().to_path_buf();
+        let table = Self::init_table(uris, &music_root);
+        let music_root = music_root.into();
         let subscribers = HashMap::new();
 
         Ok(Self {
@@ -94,9 +92,13 @@ impl Db {
         self.table.remove(uri.as_ref()).map(|_| ())
     }
 
-    fn init_table(uris: impl IntoParallelIterator<Item = PathBuf>) -> Table {
-        uris.into_par_iter()
-            .filter_map(move |uri| SongMetadata::try_new(&uri).ok().map(|data| (uri, data)))
+    fn init_table(uris: impl IntoIterator<Item = PathBuf>, music_root: impl AsRef<Path>) -> Table {
+        uris.into_iter()
+            .filter_map(move |uri| {
+                SongMetadata::try_new(&uri, music_root.as_ref())
+                    .ok()
+                    .map(|data| (uri, data))
+            })
             .collect()
     }
 }
@@ -131,7 +133,7 @@ impl SharedDb {
     }
 
     pub fn create(&mut self, uri: impl AsRef<Path> + Into<PathBuf>) -> Result<()> {
-        let data = SongMetadata::try_new(&uri)?;
+        let data = SongMetadata::try_new(&uri, &self.music_root)?;
         let mut db = self.inner.write().unwrap();
         db.create(uri.as_ref(), data);
         db.notify_subscribers(DbSubTarget::Update, DbEvent::Create { uri: uri.into() });
@@ -140,7 +142,7 @@ impl SharedDb {
     }
 
     pub fn modify(&mut self, uri: impl AsRef<Path> + Into<PathBuf>) -> Result<()> {
-        let data = SongMetadata::try_new(&uri)?;
+        let data = SongMetadata::try_new(&uri, &self.music_root)?;
         let mut db = self.inner.write().unwrap();
         db.modify(uri.as_ref(), data);
         db.notify_subscribers(DbSubTarget::Update, DbEvent::Modify { uri: uri.into() });

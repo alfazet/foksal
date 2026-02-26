@@ -124,7 +124,7 @@ impl Decoder {
     }
 
     fn start_decoding(&mut self, uri: PathBuf) -> Result<cbeam_chan::Sender<DecoderRequest>> {
-        let probe_res = fs_utils::get_probe_result(&uri)?;
+        let probe_res = fs_utils::get_probe_result(fs_utils::to_absolute(&uri, &self.music_root))?;
         let mut demuxer = probe_res.format;
         let track = demuxer.default_track().ok_or(anyhow!(
             "no audio track found in `{}`",

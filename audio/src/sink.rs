@@ -2,10 +2,7 @@ use anyhow::Result;
 use crossbeam_channel as cbeam_chan;
 use rkyv::{access, rancor::Error as RkyvError, util::AlignedVec};
 use serde::Serialize;
-use std::{
-    path::{Path, PathBuf},
-    thread,
-};
+use std::{path::PathBuf, thread};
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc as tokio_chan, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;

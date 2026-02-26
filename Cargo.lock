@@ -906,7 +906,6 @@ dependencies = [
  "libfoksalcommon",
  "lru",
  "notify",
- "rayon",
  "regex",
  "rkyv",
  "serde",

@@ -6,6 +6,7 @@ use tokio::sync::{mpsc as tokio_chan, oneshot};
 use crate::{
     core::{Db, SharedDb},
     filter::ParsedFilter,
+    fs_utils,
     tag::TagKey,
 };
 use libfoksalcommon::net::{
@@ -97,6 +98,7 @@ impl DbRequest {
 
 impl Db {
     /// returns the values of requested `tags` from songs in `uris`
+    /// `uris` can be relative to the music root
     /// response format:
     /// ```json
     /// {
@@ -111,28 +113,31 @@ impl Db {
         let tag_names: Vec<_> = tags.iter().map(|tag| (tag.to_string(), tag)).collect();
         let results: Vec<_> = uris
             .iter()
-            .map(|uri| match self.table.get(uri) {
-                Some(song_data) => {
-                    let pairs: JsonObject = tag_names
-                        .iter()
-                        .map(|(name, key)| {
-                            let value = match song_data.get(key) {
-                                Some(v) => Value::String(v.into()),
-                                None => Value::Null,
-                            };
-                            (name.clone(), value)
-                        })
-                        .collect();
-                    Value::Object(pairs)
+            .map(|uri| {
+                let uri = fs_utils::strip_or_default(uri, &self.music_root);
+                match self.table.get(uri) {
+                    Some(song_data) => {
+                        let pairs: JsonObject = tag_names
+                            .iter()
+                            .map(|(name, key)| {
+                                let value = match song_data.get(key) {
+                                    Some(v) => Value::String(v.into()),
+                                    None => Value::Null,
+                                };
+                                (name.clone(), value)
+                            })
+                            .collect();
+                        Value::Object(pairs)
+                    }
+                    None => Value::Null,
                 }
-                None => Value::Null,
             })
             .collect();
 
         Response::new_ok().with_item("metadata", &results)
     }
 
-    /// returns uris of songs that match the given `filters`, grouped by tags in `group_by`
+    /// returns relative uris of songs that match the given `filters`, grouped by tags in `group_by`
     /// a filter looks like the following: {"tag": "tag_name", "regex": "regex"}
     /// a song must match all provided filters to be included in the response
     /// response format:
@@ -149,7 +154,7 @@ impl Db {
         let mut groups: HashMap<Vec<_>, Vec<_>> = HashMap::new();
         for (uri, data) in self.table.iter().filter(|(_, data)| data.matches(&filters)) {
             let ident: Vec<_> = group_by.iter().map(|tag| data.get(tag)).collect();
-            groups.entry(ident).or_default().push(uri.to_string_lossy());
+            groups.entry(ident).or_default().push(uri);
         }
 
         let group_by_tag_names: Vec<_> = group_by.iter().map(|tag| tag.to_string()).collect();
@@ -161,7 +166,12 @@ impl Db {
                     .cloned()
                     .zip(ident.iter().map(|value| (*value).into()));
                 let mut map = JsonObject::from_iter(group_data);
-                map.insert("uris".into(), uris.into_iter().collect());
+                map.insert(
+                    "uris".into(),
+                    uris.into_iter()
+                        .map(|uri| uri.to_string_lossy().into_owned())
+                        .collect(),
+                );
 
                 map
             })

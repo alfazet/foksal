@@ -11,6 +11,22 @@ use symphonia::core::{
     probe::{Hint, ProbeResult},
 };
 
+use crate::fs_utils;
+
+pub fn strip_or_default(path: &impl AsRef<Path>, root: impl AsRef<Path>) -> &Path {
+    let path = path.as_ref();
+    path.strip_prefix(root.as_ref()).unwrap_or(path)
+}
+
+pub fn to_absolute(path: impl AsRef<Path>, root: impl Into<PathBuf>) -> PathBuf {
+    let path = path.as_ref();
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.into().join(path)
+    }
+}
+
 pub fn ensure_path_exists(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
     match path.try_exists() {
@@ -52,7 +68,7 @@ pub fn walk_dir(
         .into_iter()
         .filter_map(|entry| match entry {
             Ok(entry) if entry.file_type.is_file() && ext_matches(entry.path(), allowed_exts)? => {
-                Some(dunce::canonicalize(entry.path()).ok()?)
+                Some(fs_utils::strip_or_default(&entry.path(), &prefix).to_path_buf())
             }
             _ => None,
         })
@@ -108,10 +124,7 @@ mod tests {
         let mut results = walk_dir(root, ignore_globset, &allowed_exts).unwrap();
         results.sort();
 
-        let expected = vec![
-            temp_dir.path().join("subdir/valid2.flac"),
-            temp_dir.path().join("valid1.mp3"),
-        ];
+        let expected: Vec<PathBuf> = vec!["subdir/valid2.flac".into(), "valid1.mp3".into()];
         assert_eq!(results, expected);
     }
 }
