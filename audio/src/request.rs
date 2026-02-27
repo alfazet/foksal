@@ -5,8 +5,8 @@ use tokio::sync::oneshot;
 use crate::core::Player;
 use libfoksalcommon::net::{
     request::{
-        PlayerSubTarget, RawAddToQueueArgs, RawPlayArgs, RawPlayerRequest, SubscribeArgs,
-        UnsubscribeArgs,
+        PlayerSubTarget, RawAddToQueueArgs, RawPlayArgs, RawPlayerRequest, RawRemoveFromQueueArgs,
+        SubscribeArgs, UnsubscribeArgs,
     },
     response::Response,
 };
@@ -16,6 +16,10 @@ pub trait ParsedPlayerRequestArgs {}
 pub struct ParsedAddToQueueArgs {
     pub uri: PathBuf,
     pub pos: Option<usize>,
+}
+
+pub struct ParsedRemoveFromQueueArgs {
+    pub pos: usize,
 }
 
 pub struct ParsedPlayArgs {
@@ -35,6 +39,8 @@ pub struct PlayerRequest {
 
 impl ParsedPlayerRequestArgs for ParsedAddToQueueArgs {}
 
+impl ParsedPlayerRequestArgs for ParsedRemoveFromQueueArgs {}
+
 impl ParsedPlayerRequestArgs for ParsedPlayArgs {}
 
 impl TryFrom<RawAddToQueueArgs> for ParsedAddToQueueArgs {
@@ -45,6 +51,14 @@ impl TryFrom<RawAddToQueueArgs> for ParsedAddToQueueArgs {
             uri: raw.uri,
             pos: raw.pos,
         })
+    }
+}
+
+impl TryFrom<RawRemoveFromQueueArgs> for ParsedRemoveFromQueueArgs {
+    type Error = anyhow::Error;
+
+    fn try_from(raw: RawRemoveFromQueueArgs) -> Result<Self> {
+        Ok(Self { pos: raw.pos })
     }
 }
 
@@ -72,6 +86,14 @@ impl Player {
         self.add_to_queue(uri, pos).into()
     }
 
+    /// removes the song at position `pos` from the queue
+    pub fn req_remove_from_queue(
+        &mut self,
+        ParsedRemoveFromQueueArgs { pos }: ParsedRemoveFromQueueArgs,
+    ) -> Response {
+        self.remove_from_queue(pos).into()
+    }
+
     /// TODO: add more fields
     /// returns the player's state
     /// response format:
@@ -86,45 +108,47 @@ impl Player {
     ///     ],
     /// }
     /// ```
-    pub fn req_state(&self) -> Response {
+    pub async fn req_state(&self) -> Response {
         let queue = self.queue();
+        let sink_state = self.sink_state().await;
         Response::new_ok()
             .with_item("queue", &queue.list())
             .with_item("current_song", &queue.cur())
             .with_item("queue_pos", &queue.pos())
+            .with_item("sink_state", &sink_state)
     }
 
     pub fn req_play(&mut self, ParsedPlayArgs { pos }: ParsedPlayArgs) -> Response {
         self.play(pos).into()
     }
 
-    pub async fn req_pause(&self) -> Response {
-        self.pause().await;
+    pub fn req_pause(&self) -> Response {
+        self.pause();
         Response::new_ok()
     }
 
-    pub async fn req_resume(&self) -> Response {
-        self.resume().await;
+    pub fn req_resume(&self) -> Response {
+        self.resume();
         Response::new_ok()
     }
 
-    pub async fn req_toggle(&self) -> Response {
-        self.toggle().await;
+    pub fn req_toggle(&self) -> Response {
+        self.toggle();
         Response::new_ok()
     }
 
-    pub async fn req_stop(&self) -> Response {
-        self.stop().await;
+    pub fn req_stop(&self) -> Response {
+        self.stop();
         Response::new_ok()
     }
 
-    pub async fn req_next(&mut self) -> Response {
-        self.next().await;
+    pub fn req_next(&mut self) -> Response {
+        self.next();
         Response::new_ok()
     }
 
-    pub async fn req_prev(&mut self) -> Response {
-        self.prev().await;
+    pub fn req_prev(&mut self) -> Response {
+        self.prev();
         Response::new_ok()
     }
 

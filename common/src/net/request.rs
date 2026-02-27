@@ -59,6 +59,12 @@ pub struct RawAddToQueueArgs {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct RawRemoveFromQueueArgs {
+    pub pos: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RawPlayArgs {
     pub pos: usize,
 }
@@ -78,6 +84,7 @@ pub enum RawPlayerRequest {
     Subscribe(PlayerSubTarget),
     Unsubscribe(PlayerSubTarget),
     AddToQueue(RawAddToQueueArgs),
+    RemoveFromQueue(RawRemoveFromQueueArgs),
     Play(RawPlayArgs),
     State,
     Pause,
@@ -151,6 +158,8 @@ impl RawDbRequestArgs for RawMetadataArgs {}
 impl RawDbRequestArgs for RawSelectArgs {}
 
 impl RawPlayerRequestArgs for RawAddToQueueArgs {}
+
+impl RawPlayerRequestArgs for RawRemoveFromQueueArgs {}
 
 impl RawPlayerRequestArgs for RawPlayArgs {}
 

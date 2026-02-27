@@ -41,10 +41,6 @@ impl Player {
         }
     }
 
-    pub fn queue(&self) -> &Queue {
-        &self.queue
-    }
-
     pub fn add_subscriber(
         &mut self,
         target: PlayerSubTarget,
@@ -56,6 +52,16 @@ impl Player {
 
     pub fn remove_subscriber(&mut self, target: PlayerSubTarget, addr: SocketAddr) {
         self.subscribers.remove(&(target, addr));
+    }
+
+    pub fn queue(&self) -> &Queue {
+        &self.queue
+    }
+
+    pub async fn sink_state(&self) -> SinkState {
+        let (tx, rx) = oneshot::channel();
+        let _ = self.tx_sink_request.send(SinkRequest::GetState(tx));
+        rx.await.unwrap_or_default()
     }
 
     pub fn add_to_queue(
@@ -71,60 +77,53 @@ impl Player {
             }
         };
         if res.is_ok() {
-            self.notify_subscribers(
-                PlayerSubTarget::Queue,
-                PlayerEvent::QueueContent {
-                    queue: self.queue.list_cloned(),
-                },
-            );
+            self.notify_queue_content();
         }
 
         res
+    }
+
+    pub fn remove_from_queue(&mut self, pos: usize) -> Result<()> {
+        if self.queue.pos().is_some_and(|p| p == pos) {
+            self.stop();
+        }
+        self.queue.remove(pos)?;
+        self.notify_queue_content();
+        self.notify_queue_pos();
+
+        Ok(())
     }
 
     pub fn play(&mut self, pos: usize) -> Result<()> {
         self.queue.move_to(pos)?;
         let uri = self.queue.get(pos)?;
         self.play_from_uri(uri);
-        self.notify_subscribers(
-            PlayerSubTarget::Queue,
-            PlayerEvent::QueuePos {
-                pos: self.queue.pos(),
-            },
-        );
+        self.notify_queue_pos();
 
         Ok(())
     }
 
-    pub async fn pause(&self) {
+    pub fn pause(&self) {
         let _ = self.tx_sink_request.send(SinkRequest::Pause);
-        let state = self.sink_state().await;
-        self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::SinkState { state });
     }
 
-    pub async fn resume(&self) {
+    pub fn resume(&self) {
         let _ = self.tx_sink_request.send(SinkRequest::Resume);
-        let state = self.sink_state().await;
-        self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::SinkState { state });
     }
 
-    pub async fn toggle(&self) {
+    pub fn toggle(&self) {
         let _ = self.tx_sink_request.send(SinkRequest::Toggle);
-        let state = self.sink_state().await;
-        self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::SinkState { state });
     }
 
-    pub async fn stop(&self) {
+    pub fn stop(&self) {
         let _ = self.tx_sink_request.send(SinkRequest::Stop);
-        let state = self.sink_state().await;
-        self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::SinkState { state });
     }
 
-    pub async fn next(&mut self) {
+    pub fn next(&mut self) {
         self.queue.move_to_next();
         match self.queue.cur() {
             Some(uri) => self.play_from_uri(uri),
-            None => self.stop().await,
+            None => self.stop(),
         }
 
         self.notify_subscribers(
@@ -135,11 +134,11 @@ impl Player {
         );
     }
 
-    pub async fn prev(&mut self) {
+    pub fn prev(&mut self) {
         self.queue.move_to_prev();
         match self.queue.cur() {
             Some(uri) => self.play_from_uri(uri),
-            None => self.stop().await,
+            None => self.stop(),
         }
 
         self.notify_subscribers(
@@ -158,10 +157,18 @@ impl Player {
         self.queue.set_mode_random();
     }
 
-    async fn sink_state(&self) -> SinkState {
-        let (tx, rx) = oneshot::channel();
-        let _ = self.tx_sink_request.send(SinkRequest::GetState(tx));
-        rx.await.unwrap_or_default()
+    pub fn notify_queue_pos(&self) {
+        let pos = self.queue.pos();
+        self.notify_subscribers(PlayerSubTarget::Queue, PlayerEvent::QueuePos { pos });
+    }
+
+    pub fn notify_queue_content(&self) {
+        let queue = self.queue.list_cloned();
+        self.notify_subscribers(PlayerSubTarget::Queue, PlayerEvent::QueueContent { queue });
+    }
+
+    pub fn notify_sink_state(&self, state: SinkState) {
+        self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::SinkState { state });
     }
 
     fn play_from_uri(&self, uri: impl AsRef<Path>) {

@@ -84,6 +84,18 @@ impl Queue {
         self.list.push(uri.into());
     }
 
+    pub fn remove(&mut self, pos: usize) -> Result<()> {
+        let len = self.list.len();
+        ensure!(pos < len, QueueError::OutOfBounds { index: pos, len });
+        let removed_uri = self.list.remove(pos);
+        self.available.remove(&removed_uri);
+        if self.pos.is_some_and(|p| p >= pos) {
+            self.move_to_prev();
+        }
+
+        Ok(())
+    }
+
     pub fn set_mode_seq(&mut self) {
         self.mode = QueueMode::Sequential;
     }
@@ -209,5 +221,17 @@ mod tests {
         assert_eq!(vis.len(), n);
         q.move_to_next();
         assert_eq!(q.pos(), None);
+    }
+
+    #[test]
+    fn test_remove() {
+        let mut q = init_queue(5);
+        q.move_to_next();
+        q.move_to_next();
+        q.remove(0).unwrap();
+        assert_eq!(q.pos(), Some(0));
+        q.remove(3).unwrap();
+        assert_eq!(q.pos(), Some(0));
+        assert_eq!(q.list().len(), 3);
     }
 }

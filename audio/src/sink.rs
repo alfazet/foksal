@@ -26,7 +26,6 @@ pub enum SinkError {
 
 pub enum SinkRequest {
     GetState(oneshot::Sender<SinkState>),
-    GetCurrentSong(oneshot::Sender<Option<PathBuf>>),
     Play(PathBuf),
     Stop,
     Pause,
@@ -37,6 +36,7 @@ pub enum SinkRequest {
 
 pub enum SinkResponse {
     SongOver,
+    StateChanged(SinkState),
 }
 
 #[derive(Default)]
@@ -102,9 +102,14 @@ impl Sink {
         }
     }
 
+    fn change_state(&mut self, new_state: SinkState) {
+        self.state = new_state;
+        let _ = self.tx_response.send(SinkResponse::StateChanged(new_state));
+    }
+
     fn err_and_stop(&mut self, err: SinkError) {
         let _ = self.tx_error.send(err);
-        self.state = SinkState::Stopped;
+        self.change_state(SinkState::Stopped);
     }
 
     fn handle_request(&mut self, request: SinkRequest) {
@@ -112,37 +117,30 @@ impl Sink {
             SinkRequest::GetState(respond_to) => {
                 let _ = respond_to.send(self.state);
             }
-            SinkRequest::GetCurrentSong(respond_to) => {
-                let response = match self.state {
-                    SinkState::Stopped => None,
-                    _ => Some(self.data.uri.clone()),
-                };
-                let _ = respond_to.send(response);
-            }
             SinkRequest::Play(uri) => {
-                self.state = SinkState::Playing;
                 self.data = Default::default();
                 self.data.uri = uri;
                 self.data.samples.clear();
+                self.change_state(SinkState::Playing);
             }
             SinkRequest::Pause => {
                 if let SinkState::Playing = self.state {
-                    self.state = SinkState::Paused;
+                    self.change_state(SinkState::Paused);
                 }
             }
             SinkRequest::Resume => {
                 if let SinkState::Paused = self.state {
-                    self.state = SinkState::Playing;
+                    self.change_state(SinkState::Playing);
                 }
             }
             SinkRequest::Toggle => {
-                self.state = match self.state {
-                    SinkState::Paused => SinkState::Playing,
-                    SinkState::Playing => SinkState::Paused,
-                    _ => self.state,
+                match self.state {
+                    SinkState::Paused => self.change_state(SinkState::Playing),
+                    SinkState::Playing => self.change_state(SinkState::Paused),
+                    _ => (),
                 };
             }
-            SinkRequest::Stop => self.state = SinkState::Stopped,
+            SinkRequest::Stop => self.change_state(SinkState::Stopped),
         }
     }
 
@@ -247,7 +245,7 @@ impl Sink {
                         samples.ptr = end + 1;
                         if samples.ptr >= samples.inner.len() && samples.got_all {
                             let _ = self.tx_response.send(SinkResponse::SongOver);
-                            self.state = SinkState::Stopped;
+                            self.change_state(SinkState::Stopped);
                         }
                     }
                     Err(e) => {

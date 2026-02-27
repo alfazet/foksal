@@ -56,15 +56,21 @@ async fn run(
                                 player.req_add_to_queue(args)
                             })
                         }
+                        RawPlayerRequest::RemoveFromQueue(raw_args) => {
+                            handle_request_mut(&mut player, raw_args, |player, args| {
+                                player.req_remove_from_queue(args)
+                            })
+                        }
                         RawPlayerRequest::Play(raw_args) => {
                             handle_request_mut(&mut player, raw_args, |player, args| player.req_play(args))
                         }
-                        RawPlayerRequest::Pause => player.req_pause().await,
-                        RawPlayerRequest::Resume => player.req_resume().await,
-                        RawPlayerRequest::Toggle => player.req_toggle().await,
-                        RawPlayerRequest::Stop => player.req_stop().await,
-                        RawPlayerRequest::Next => player.req_next().await,
-                        RawPlayerRequest::Prev => player.req_prev().await,
+                        RawPlayerRequest::State => player.req_state().await,
+                        RawPlayerRequest::Pause => player.req_pause(),
+                        RawPlayerRequest::Resume => player.req_resume(),
+                        RawPlayerRequest::Toggle => player.req_toggle(),
+                        RawPlayerRequest::Stop => player.req_stop(),
+                        RawPlayerRequest::Next => player.req_next(),
+                        RawPlayerRequest::Prev => player.req_prev(),
                         RawPlayerRequest::QueueSeq => player.req_queue_seq(),
                         RawPlayerRequest::QueueRandom => player.req_queue_random(),
                         _ => unreachable!(), // subscription requests are handled below
@@ -87,7 +93,10 @@ async fn run(
             Some(response) = rx_sink_response.recv() => {
                 match response {
                     SinkResponse::SongOver => {
-                        player.next().await;
+                        player.next();
+                    }
+                    SinkResponse::StateChanged(state) => {
+                        player.notify_sink_state(state);
                     }
                 }
             }
