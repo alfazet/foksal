@@ -42,6 +42,9 @@ async fn run(db: SharedDb, mut rx_db_request: tokio_chan::UnboundedReceiver<DbRe
                 RawDbRequest::Select(raw_args) => {
                     handle_request(&db, raw_args, |db, parsed_args| db.req_select(parsed_args))
                 }
+                RawDbRequest::Unique(raw_args) => {
+                    handle_request(&db, raw_args, |db, parsed_args| db.req_unique(parsed_args))
+                }
                 _ => unreachable!(), // subscription requests are handled below
             },
             DbRequestKind::Subscribe(SubscribeArgs {

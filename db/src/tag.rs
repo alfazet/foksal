@@ -43,6 +43,12 @@ lazy_static! {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct TagKey(StandardTagKey);
 
+#[derive(Clone, Copy)]
+pub enum SortingOrder {
+    Ascending,
+    Descending,
+}
+
 impl TryFrom<&str> for TagKey {
     type Error = anyhow::Error;
 
@@ -77,6 +83,37 @@ impl TagKey {
     pub fn fallback(self) -> Option<Self> {
         TAG_FALLBACK_RULES.get(&self.0).copied().map(Self)
     }
+
+    pub fn cmp(&self, a: Option<&str>, b: Option<&str>) -> Ordering {
+        match (a, b) {
+            (None, None) => Ordering::Equal,
+            (None, Some(_)) => Ordering::Less,
+            (Some(_), None) => Ordering::Greater,
+            (Some(a), Some(b)) => match self.0 {
+                StandardTagKey::TrackNumber => {
+                    let a = parse_out_of(a);
+                    let b = parse_out_of(b);
+                    match (a, b) {
+                        (Some(a), Some(b)) => a.cmp(&b),
+                        _ => Ordering::Equal,
+                    }
+                }
+                _ => a.cmp(b),
+            },
+        }
+    }
+}
+
+impl TryFrom<&str> for SortingOrder {
+    type Error = anyhow::Error;
+
+    fn try_from(s: &str) -> Result<Self> {
+        match s {
+            "asc" | "ascending" => Ok(Self::Ascending),
+            "desc" | "descending" => Ok(Self::Descending),
+            other => bail!("invalid sorting order `{}`", other),
+        }
+    }
 }
 
 /// parses XX if `s` is of the form "XX/YY", or the entirity of `s` otherwise
@@ -87,45 +124,20 @@ fn parse_out_of(s: &str) -> Option<i32> {
     }
 }
 
-pub fn cmp(key: TagKey, a: &str, b: &str) -> Ordering {
-    match key.0 {
-        StandardTagKey::TrackNumber => {
-            let a = parse_out_of(a);
-            let b = parse_out_of(b);
-            match (a, b) {
-                (Some(a), Some(b)) => a.cmp(&b),
-                _ => Ordering::Equal,
-            }
-        }
-        _ => a.cmp(b),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_cmp() {
-        let a = "03/12";
-        let b = "4";
-        let c = "10/12";
+        let a = Some("03/12");
+        let b = Some("4");
+        let c = Some("10/12");
+        let key = TagKey(StandardTagKey::TrackNumber);
 
-        assert_eq!(
-            cmp(TagKey(StandardTagKey::TrackNumber), a, b),
-            Ordering::Less
-        );
-        assert_eq!(
-            cmp(TagKey(StandardTagKey::TrackNumber), b, c),
-            Ordering::Less
-        );
-        assert_eq!(
-            cmp(TagKey(StandardTagKey::TrackNumber), a, c),
-            Ordering::Less
-        );
-        assert_eq!(
-            cmp(TagKey(StandardTagKey::TrackNumber), a, a),
-            Ordering::Equal
-        );
+        assert_eq!(key.cmp(a, b), Ordering::Less);
+        assert_eq!(key.cmp(b, c), Ordering::Less);
+        assert_eq!(key.cmp(a, c), Ordering::Less);
+        assert_eq!(key.cmp(a, a), Ordering::Equal);
     }
 }

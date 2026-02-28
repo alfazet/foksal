@@ -1,18 +1,23 @@
 use anyhow::{Result, bail};
 use serde_json::Value;
-use std::{collections::HashMap, net::SocketAddr, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    net::SocketAddr,
+    path::PathBuf,
+};
 use tokio::sync::{mpsc as tokio_chan, oneshot};
 
 use crate::{
     core::{Db, SharedDb},
     filter::ParsedFilter,
     fs_utils,
-    tag::TagKey,
+    tag::{SortingOrder, TagKey},
 };
 use libfoksalcommon::net::{
     core::JsonObject,
     request::{
-        DbSubTarget, RawDbRequest, RawMetadataArgs, RawSelectArgs, SubscribeArgs, UnsubscribeArgs,
+        DbSubTarget, RawDbRequest, RawMetadataArgs, RawSelectArgs, RawUniqueArgs, SubscribeArgs,
+        UnsubscribeArgs,
     },
     response::{EventNotif, Response},
 };
@@ -27,6 +32,12 @@ pub struct ParsedMetadataArgs {
 pub struct ParsedSelectArgs {
     pub filters: Vec<ParsedFilter>,
     pub group_by: Vec<TagKey>,
+}
+
+pub struct ParsedUniqueArgs {
+    pub tag: TagKey,
+    pub group_by: Vec<TagKey>,
+    pub sort: Option<SortingOrder>,
 }
 
 pub enum DbRequestKind {
@@ -67,26 +78,60 @@ impl TryFrom<RawSelectArgs> for ParsedSelectArgs {
     type Error = anyhow::Error;
 
     fn try_from(raw: RawSelectArgs) -> Result<Self> {
-        let filters = match raw
-            .filters
-            .into_iter()
-            .map(ParsedFilter::try_from)
-            .collect()
-        {
-            Ok(filters) => filters,
-            Err(e) => bail!(e),
+        let filters = match raw.filters {
+            Some(filters) => match filters.into_iter().map(ParsedFilter::try_from).collect() {
+                Ok(filters) => filters,
+                Err(e) => bail!(e),
+            },
+            None => Vec::new(),
         };
-        let group_by = match raw
-            .group_by
-            .iter()
-            .map(|tag_name| TagKey::try_from(tag_name.as_str()))
-            .collect()
-        {
-            Ok(tags) => tags,
-            Err(e) => bail!(e),
+        let group_by = match raw.group_by {
+            Some(group_by) => {
+                match group_by
+                    .iter()
+                    .map(|tag_name| TagKey::try_from(tag_name.as_str()))
+                    .collect()
+                {
+                    Ok(tags) => tags,
+                    Err(e) => bail!(e),
+                }
+            }
+            None => Vec::new(),
         };
 
         Ok(Self { filters, group_by })
+    }
+}
+
+impl ParsedDbRequestArgs for ParsedUniqueArgs {}
+
+impl TryFrom<RawUniqueArgs> for ParsedUniqueArgs {
+    type Error = anyhow::Error;
+
+    fn try_from(raw: RawUniqueArgs) -> Result<Self> {
+        let tag = TagKey::try_from(raw.tag.as_str())?;
+        let group_by = match raw.group_by {
+            Some(group_by) => {
+                match group_by
+                    .iter()
+                    .map(|tag_name| TagKey::try_from(tag_name.as_str()))
+                    .collect()
+                {
+                    Ok(tags) => tags,
+                    Err(e) => bail!(e),
+                }
+            }
+            None => Vec::new(),
+        };
+        let sort = raw
+            .sort
+            .and_then(|s| SortingOrder::try_from(s.as_str()).ok());
+
+        Ok(Self {
+            tag,
+            group_by,
+            sort,
+        })
     }
 }
 
@@ -179,6 +224,70 @@ impl Db {
 
         Response::new_ok().with_item("values", &values)
     }
+
+    /// returns unique values of `tag` present in the music database,
+    /// grouped by tags in `group_by` and optionally sorted
+    /// response format:
+    /// ```json
+    /// {
+    ///     "ok": true,
+    ///     "values": [
+    ///         {
+    ///             "group_by_tag1": "value11",
+    ///             "group_by_tag2": "value12",
+    ///             ...,
+    ///             "unique": ["tag_value11", "tag_value12", ...]
+    ///         },
+    ///         {
+    ///             "group_by_tag1": "value21",
+    ///             "group_by_tag2": "value22",
+    ///             ...,
+    ///             "unique": ["tag_value21", "tag_value22", ...]
+    ///         },
+    ///     ]
+    /// }
+    /// ```
+    pub fn unique(
+        &self,
+        ParsedUniqueArgs {
+            tag,
+            group_by,
+            sort,
+        }: ParsedUniqueArgs,
+    ) -> Response {
+        let mut groups: HashMap<Vec<_>, HashSet<_>> = HashMap::new();
+        for (_, data) in self.table.iter() {
+            let ident: Vec<_> = group_by.iter().map(|tag| data.get(tag)).collect();
+            groups.entry(ident).or_default().insert(data.get(&tag));
+        }
+        let group_by_tag_names: Vec<_> = group_by.iter().map(|tag| tag.to_string()).collect();
+        let values: Vec<_> = groups
+            .into_iter()
+            .map(|(ident, values)| {
+                let group_data = group_by_tag_names
+                    .iter()
+                    .cloned()
+                    .zip(ident.iter().map(|value| (*value).into()));
+                let mut map = JsonObject::from_iter(group_data);
+                let mut unique = values.into_iter().collect::<Vec<_>>();
+                if let Some(sort) = sort {
+                    match sort {
+                        SortingOrder::Ascending => {
+                            unique.sort_unstable_by(|a, b| tag.cmp(a.as_deref(), b.as_deref()))
+                        }
+                        SortingOrder::Descending => {
+                            unique.sort_unstable_by(|a, b| tag.cmp(b.as_deref(), a.as_deref()))
+                        }
+                    }
+                }
+                map.insert("unique".into(), unique.into());
+
+                map
+            })
+            .collect();
+
+        Response::new_ok().with_item("values", &values)
+    }
 }
 
 impl SharedDb {
@@ -205,5 +314,10 @@ impl SharedDb {
     pub fn req_select(&self, args: ParsedSelectArgs) -> Response {
         let db = self.inner.read().unwrap();
         db.select(args)
+    }
+
+    pub fn req_unique(&self, args: ParsedUniqueArgs) -> Response {
+        let db = self.inner.read().unwrap();
+        db.unique(args)
     }
 }

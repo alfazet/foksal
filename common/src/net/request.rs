@@ -46,8 +46,16 @@ pub struct RawMetadataArgs {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawSelectArgs {
-    pub filters: Vec<RawFilter>,
-    pub group_by: Vec<String>,
+    pub filters: Option<Vec<RawFilter>>,
+    pub group_by: Option<Vec<String>>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawUniqueArgs {
+    pub tag: String,
+    pub group_by: Option<Vec<String>>,
+    pub sort: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -88,6 +96,7 @@ pub enum RawDbRequest {
     Unsubscribe(DbSubTarget),
     Metadata(RawMetadataArgs),
     Select(RawSelectArgs),
+    Unique(RawUniqueArgs),
 }
 
 #[derive(Deserialize)]
@@ -170,6 +179,8 @@ impl<T: SubTarget> UnsubscribeArgs<T> {
 impl RawDbRequestArgs for RawMetadataArgs {}
 
 impl RawDbRequestArgs for RawSelectArgs {}
+
+impl RawDbRequestArgs for RawUniqueArgs {}
 
 impl RawPlayerRequestArgs for RawAddToQueueArgs {}
 
