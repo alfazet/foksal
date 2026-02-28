@@ -67,6 +67,9 @@ async fn run(
                         RawPlayerRequest::Volume(raw_args) => {
                             handle_request(&player, raw_args, |player, args| player.req_volume(args))
                         }
+                        RawPlayerRequest::Seek(raw_args) => {
+                            handle_request(&player, raw_args, |player, args| player.req_seek(args))
+                        }
                         RawPlayerRequest::State => player.req_state().await,
                         RawPlayerRequest::Pause => player.req_pause(),
                         RawPlayerRequest::Resume => player.req_resume(),
@@ -103,6 +106,9 @@ async fn run(
                     }
                     SinkResponse::VolumeChanged(volume) => {
                         player.notify_volume(volume);
+                    }
+                    SinkResponse::Elapsed(seconds) => {
+                        player.notify_elapsed(seconds);
                     }
                 }
             }

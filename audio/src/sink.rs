@@ -28,19 +28,21 @@ pub enum SinkRequest {
     GetState(oneshot::Sender<SinkState>),
     GetCurSong(oneshot::Sender<Option<PathBuf>>),
     GetVolume(oneshot::Sender<Volume>),
+    GetElapsed(oneshot::Sender<usize>),
     Play(PathBuf),
     VolChange(i8),
+    Seek(isize),
     Stop,
     Pause,
     Resume,
     Toggle,
-    // TODO: Seek
 }
 
 pub enum SinkResponse {
     SongOver,
     StateChanged(SinkState),
     VolumeChanged(Volume),
+    Elapsed(usize),
 }
 
 #[derive(Default)]
@@ -54,6 +56,7 @@ struct Samples {
 struct PlaybackData {
     samples: Samples,
     volume: Volume,
+    prev_elapsed: usize,
     uri: Option<PathBuf>,
     audio_spec: Option<AudioSpec>,
     resampler: Option<ResamplerWrapper>,
@@ -120,6 +123,45 @@ impl Sink {
         self.change_state(SinkState::Stopped);
     }
 
+    fn check_song_end(&mut self) {
+        let samples = &self.data.samples;
+        if samples.ptr >= samples.inner.len() && samples.got_all {
+            let _ = self.tx_response.send(SinkResponse::SongOver);
+            self.change_state(SinkState::Stopped);
+        }
+    }
+
+    fn elapsed(&self) -> usize {
+        match self.data.audio_spec {
+            Some(AudioSpec {
+                n_channels,
+                sample_rate,
+            }) => self.data.samples.ptr / (n_channels * sample_rate),
+            None => 0,
+        }
+    }
+
+    fn recalc_elapsed(&mut self) {
+        let new_elapsed = self.elapsed();
+        if new_elapsed != self.data.prev_elapsed {
+            self.data.prev_elapsed = new_elapsed;
+            let _ = self.tx_response.send(SinkResponse::Elapsed(new_elapsed));
+        }
+    }
+
+    fn seek(&mut self, seconds: isize) {
+        let Some(AudioSpec {
+            n_channels,
+            sample_rate,
+        }) = self.data.audio_spec.as_ref()
+        else {
+            return;
+        };
+        let offset = (n_channels * sample_rate) as isize * seconds;
+        self.data.samples.ptr = self.data.samples.ptr.saturating_add_signed(offset);
+        self.check_song_end();
+    }
+
     fn handle_request(&mut self, request: SinkRequest) {
         match request {
             SinkRequest::GetState(respond_to) => {
@@ -131,11 +173,18 @@ impl Sink {
             SinkRequest::GetVolume(respond_to) => {
                 let _ = respond_to.send(self.data.volume);
             }
+            SinkRequest::GetElapsed(respond_to) => {
+                let _ = respond_to.send(self.elapsed());
+            }
             SinkRequest::VolChange(delta) => {
                 self.data.volume.change(delta);
                 let _ = self
                     .tx_response
                     .send(SinkResponse::VolumeChanged(self.data.volume));
+            }
+            SinkRequest::Seek(seconds) => {
+                self.seek(seconds);
+                self.recalc_elapsed();
             }
             SinkRequest::Play(uri) => {
                 self.data = Default::default();
@@ -257,27 +306,32 @@ impl Sink {
             }
             if let SinkState::Playing = self.state
                 && let Some(ref mut resampler) = self.data.resampler
-                && self.data.samples.ptr < self.data.samples.inner.len()
             {
-                let samples = &mut self.data.samples;
-                let end = (samples.ptr + resampler.input_len() - 1).min(samples.inner.len() - 1);
-                let buf = &samples.inner[samples.ptr..=end];
-                match resampler.resample(buf) {
-                    Ok(resampled) => {
-                        let mult = self.data.volume.to_mult();
-                        for sample in resampled {
-                            let _ = tx_samples.send(*sample * (mult as CommonSample));
-                        }
-                        samples.ptr = end + 1;
-                        if samples.ptr >= samples.inner.len() && samples.got_all {
-                            let _ = self.tx_response.send(SinkResponse::SongOver);
-                            self.change_state(SinkState::Stopped);
-                        }
+                if self.data.samples.ptr >= self.data.samples.inner.len() {
+                    if self.data.samples.got_all {
+                        // seeked past the song's duration
+                        self.check_song_end();
                     }
-                    Err(e) => {
-                        self.err_and_stop(SinkError::Resampler {
-                            reason: e.to_string(),
-                        });
+                } else {
+                    let samples = &mut self.data.samples;
+                    let end =
+                        (samples.ptr + resampler.input_len() - 1).min(samples.inner.len() - 1);
+                    let buf = &samples.inner[samples.ptr..=end];
+                    match resampler.resample(buf) {
+                        Ok(resampled) => {
+                            let mult = self.data.volume.to_mult();
+                            for sample in resampled {
+                                let _ = tx_samples.send(*sample * (mult as CommonSample));
+                            }
+                            samples.ptr = end + 1;
+                            self.recalc_elapsed();
+                            self.check_song_end();
+                        }
+                        Err(e) => {
+                            self.err_and_stop(SinkError::Resampler {
+                                reason: e.to_string(),
+                            });
+                        }
                     }
                 }
             }

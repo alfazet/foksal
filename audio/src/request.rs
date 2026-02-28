@@ -6,7 +6,7 @@ use crate::core::Player;
 use libfoksalcommon::net::{
     request::{
         PlayerSubTarget, RawAddToQueueArgs, RawPlayArgs, RawPlayerRequest, RawRemoveFromQueueArgs,
-        RawVolumeArgs, SubscribeArgs, UnsubscribeArgs,
+        RawSeekArgs, RawVolumeArgs, SubscribeArgs, UnsubscribeArgs,
     },
     response::Response,
 };
@@ -30,6 +30,10 @@ pub struct ParsedVolumeArgs {
     pub delta: i8,
 }
 
+pub struct ParsedSeekArgs {
+    pub seconds: isize,
+}
+
 pub enum PlayerRequestKind {
     Raw(RawPlayerRequest),
     Subscribe(SubscribeArgs<PlayerSubTarget>),
@@ -48,6 +52,8 @@ impl ParsedPlayerRequestArgs for ParsedRemoveFromQueueArgs {}
 impl ParsedPlayerRequestArgs for ParsedPlayArgs {}
 
 impl ParsedPlayerRequestArgs for ParsedVolumeArgs {}
+
+impl ParsedPlayerRequestArgs for ParsedSeekArgs {}
 
 impl TryFrom<RawAddToQueueArgs> for ParsedAddToQueueArgs {
     type Error = anyhow::Error;
@@ -81,6 +87,16 @@ impl TryFrom<RawVolumeArgs> for ParsedVolumeArgs {
 
     fn try_from(raw: RawVolumeArgs) -> Result<Self> {
         Ok(Self { delta: raw.delta })
+    }
+}
+
+impl TryFrom<RawSeekArgs> for ParsedSeekArgs {
+    type Error = anyhow::Error;
+
+    fn try_from(raw: RawSeekArgs) -> Result<Self> {
+        Ok(Self {
+            seconds: raw.seconds,
+        })
     }
 }
 
@@ -120,7 +136,8 @@ impl Player {
     ///         "some/other/song"
     ///     ],
     ///     "sink_state": "paused",
-    ///     "volume": 80
+    ///     "volume": 80,
+    ///     "elapsed": 123,
     /// }
     /// ```
     pub async fn req_state(&self) -> Response {
@@ -128,12 +145,14 @@ impl Player {
         let cur_song = self.cur_song().await;
         let sink_state = self.sink_state().await;
         let volume = self.volume().await;
+        let elapsed = self.elapsed().await;
         Response::new_ok()
             .with_item("queue", &queue.list())
             .with_item("current_song", &cur_song)
             .with_item("queue_pos", &queue.pos())
             .with_item("sink_state", &sink_state)
             .with_item("volume", &volume)
+            .with_item("elapsed", &elapsed)
     }
 
     pub fn req_play(&mut self, ParsedPlayArgs { pos }: ParsedPlayArgs) -> Response {
@@ -142,6 +161,11 @@ impl Player {
 
     pub fn req_volume(&self, ParsedVolumeArgs { delta }: ParsedVolumeArgs) -> Response {
         self.change_volume(delta);
+        Response::new_ok()
+    }
+
+    pub fn req_seek(&self, ParsedSeekArgs { seconds }: ParsedSeekArgs) -> Response {
+        self.seek(seconds);
         Response::new_ok()
     }
 

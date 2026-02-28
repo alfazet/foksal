@@ -75,6 +75,12 @@ pub struct RawVolumeArgs {
     pub delta: i8,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawSeekArgs {
+    pub seconds: isize,
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RawDbRequest {
@@ -92,7 +98,7 @@ pub enum RawPlayerRequest {
     AddToQueue(RawAddToQueueArgs),
     RemoveFromQueue(RawRemoveFromQueueArgs),
     Play(RawPlayArgs),
-    // Seek(RawSeekArgs),
+    Seek(RawSeekArgs),
     Volume(RawVolumeArgs),
     State,
     Pause,
@@ -172,6 +178,8 @@ impl RawPlayerRequestArgs for RawRemoveFromQueueArgs {}
 impl RawPlayerRequestArgs for RawPlayArgs {}
 
 impl RawPlayerRequestArgs for RawVolumeArgs {}
+
+impl RawPlayerRequestArgs for RawSeekArgs {}
 
 impl FileRequest {
     pub fn new(raw: RawFileRequest, respond_to: oneshot::Sender<Bytes>) -> Self {
