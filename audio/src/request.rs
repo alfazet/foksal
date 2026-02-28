@@ -6,7 +6,7 @@ use crate::core::Player;
 use libfoksalcommon::net::{
     request::{
         PlayerSubTarget, RawAddToQueueArgs, RawPlayArgs, RawPlayerRequest, RawRemoveFromQueueArgs,
-        SubscribeArgs, UnsubscribeArgs,
+        RawVolumeArgs, SubscribeArgs, UnsubscribeArgs,
     },
     response::Response,
 };
@@ -26,6 +26,10 @@ pub struct ParsedPlayArgs {
     pub pos: usize,
 }
 
+pub struct ParsedVolumeArgs {
+    pub delta: i8,
+}
+
 pub enum PlayerRequestKind {
     Raw(RawPlayerRequest),
     Subscribe(SubscribeArgs<PlayerSubTarget>),
@@ -42,6 +46,8 @@ impl ParsedPlayerRequestArgs for ParsedAddToQueueArgs {}
 impl ParsedPlayerRequestArgs for ParsedRemoveFromQueueArgs {}
 
 impl ParsedPlayerRequestArgs for ParsedPlayArgs {}
+
+impl ParsedPlayerRequestArgs for ParsedVolumeArgs {}
 
 impl TryFrom<RawAddToQueueArgs> for ParsedAddToQueueArgs {
     type Error = anyhow::Error;
@@ -70,6 +76,14 @@ impl TryFrom<RawPlayArgs> for ParsedPlayArgs {
     }
 }
 
+impl TryFrom<RawVolumeArgs> for ParsedVolumeArgs {
+    type Error = anyhow::Error;
+
+    fn try_from(raw: RawVolumeArgs) -> Result<Self> {
+        Ok(Self { delta: raw.delta })
+    }
+}
+
 impl PlayerRequest {
     pub fn new(kind: PlayerRequestKind, respond_to: oneshot::Sender<Response>) -> Self {
         Self { kind, respond_to }
@@ -94,7 +108,6 @@ impl Player {
         self.remove_from_queue(pos).into()
     }
 
-    /// TODO: add more fields
     /// returns the player's state
     /// response format:
     /// ```json
@@ -106,20 +119,30 @@ impl Player {
     ///         "current/song",
     ///         "some/other/song"
     ///     ],
+    ///     "sink_state": "paused",
+    ///     "volume": 80
     /// }
     /// ```
     pub async fn req_state(&self) -> Response {
         let queue = self.queue();
+        let cur_song = self.cur_song().await;
         let sink_state = self.sink_state().await;
+        let volume = self.volume().await;
         Response::new_ok()
             .with_item("queue", &queue.list())
-            .with_item("current_song", &queue.cur())
+            .with_item("current_song", &cur_song)
             .with_item("queue_pos", &queue.pos())
             .with_item("sink_state", &sink_state)
+            .with_item("volume", &volume)
     }
 
     pub fn req_play(&mut self, ParsedPlayArgs { pos }: ParsedPlayArgs) -> Response {
         self.play(pos).into()
+    }
+
+    pub fn req_volume(&self, ParsedVolumeArgs { delta }: ParsedVolumeArgs) -> Response {
+        self.change_volume(delta);
+        Response::new_ok()
     }
 
     pub fn req_pause(&self) -> Response {

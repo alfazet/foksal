@@ -99,8 +99,8 @@ async fn handle_client(
         tokio::select! {
             msg = ws_read.next() => {
                 match msg {
-                    Some(msg) => match msg {
-                        Ok(WsMessage::Binary(bytes)) => {
+                    Some(msg) => {
+                        if let Ok(WsMessage::Binary(bytes)) = msg {
                             let request_kind: LocalRequest = match serde_json::from_slice(&bytes).map_err(|e| anyhow!(e)) {
                                 Ok(request_kind) => request_kind,
                                 Err(e) => {
@@ -137,7 +137,6 @@ async fn handle_client(
                                 }
                             }
                         }
-                        _ => (),
                     }
                     None => break Err(anyhow!("connection closed unexpectedly")),
                 }

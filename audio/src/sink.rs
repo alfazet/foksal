@@ -7,7 +7,7 @@ use thiserror::Error;
 use tokio::sync::{broadcast, mpsc as tokio_chan, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
 
-use crate::{device::Device, resampler::ResamplerWrapper};
+use crate::{Volume, device::Device, resampler::ResamplerWrapper};
 use libfoksalcommon::{
     AUDIO_BUF_LEN, ArchivedAudioChunk, AudioSpec, CommonSample,
     net::request::{FileRequest, RawFileRequest},
@@ -26,17 +26,21 @@ pub enum SinkError {
 
 pub enum SinkRequest {
     GetState(oneshot::Sender<SinkState>),
+    GetCurSong(oneshot::Sender<Option<PathBuf>>),
+    GetVolume(oneshot::Sender<Volume>),
     Play(PathBuf),
+    VolChange(i8),
     Stop,
     Pause,
     Resume,
     Toggle,
-    // TODO: Seek, VolDelta
+    // TODO: Seek
 }
 
 pub enum SinkResponse {
     SongOver,
     StateChanged(SinkState),
+    VolumeChanged(Volume),
 }
 
 #[derive(Default)]
@@ -49,7 +53,8 @@ struct Samples {
 #[derive(Default)]
 struct PlaybackData {
     samples: Samples,
-    uri: PathBuf,
+    volume: Volume,
+    uri: Option<PathBuf>,
     audio_spec: Option<AudioSpec>,
     resampler: Option<ResamplerWrapper>,
     rx_chunks: Option<oneshot::Receiver<Bytes>>,
@@ -104,6 +109,9 @@ impl Sink {
 
     fn change_state(&mut self, new_state: SinkState) {
         self.state = new_state;
+        if matches!(new_state, SinkState::Stopped) {
+            self.data = Default::default();
+        }
         let _ = self.tx_response.send(SinkResponse::StateChanged(new_state));
     }
 
@@ -117,9 +125,21 @@ impl Sink {
             SinkRequest::GetState(respond_to) => {
                 let _ = respond_to.send(self.state);
             }
+            SinkRequest::GetCurSong(respond_to) => {
+                let _ = respond_to.send(self.data.uri.clone());
+            }
+            SinkRequest::GetVolume(respond_to) => {
+                let _ = respond_to.send(self.data.volume);
+            }
+            SinkRequest::VolChange(delta) => {
+                self.data.volume.change(delta);
+                let _ = self
+                    .tx_response
+                    .send(SinkResponse::VolumeChanged(self.data.volume));
+            }
             SinkRequest::Play(uri) => {
                 self.data = Default::default();
-                self.data.uri = uri;
+                self.data.uri.replace(uri);
                 self.data.samples.clear();
                 self.change_state(SinkState::Playing);
             }
@@ -144,8 +164,11 @@ impl Sink {
         }
     }
 
-    fn request_more_samples(&mut self, tx_file_request: &tokio_chan::UnboundedSender<FileRequest>) {
-        let uri = self.data.uri.clone();
+    fn request_more_samples(
+        &mut self,
+        uri: PathBuf,
+        tx_file_request: &tokio_chan::UnboundedSender<FileRequest>,
+    ) {
         let start = self.data.samples.inner.len();
         let end = start + REQUEST_SIZE * AUDIO_BUF_LEN;
         let (tx, rx) = oneshot::channel();
@@ -208,7 +231,9 @@ impl Sink {
             if let Some(request) = request {
                 self.handle_request(request);
             }
-            if !matches!(self.state, SinkState::Stopped) && !self.data.samples.got_all {
+            if !self.data.samples.got_all
+                && let Some(uri) = self.data.uri.as_ref().cloned()
+            {
                 match self.data.rx_chunks {
                     Some(ref mut rx) => {
                         if let Ok(bytes) = rx.try_recv() {
@@ -227,7 +252,7 @@ impl Sink {
                             }
                         }
                     }
-                    None => self.request_more_samples(&tx_file_request),
+                    None => self.request_more_samples(uri, &tx_file_request),
                 }
             }
             if let SinkState::Playing = self.state
@@ -239,8 +264,9 @@ impl Sink {
                 let buf = &samples.inner[samples.ptr..=end];
                 match resampler.resample(buf) {
                     Ok(resampled) => {
+                        let mult = self.data.volume.to_mult();
                         for sample in resampled {
-                            let _ = tx_samples.send(*sample);
+                            let _ = tx_samples.send(*sample * (mult as CommonSample));
                         }
                         samples.ptr = end + 1;
                         if samples.ptr >= samples.inner.len() && samples.got_all {

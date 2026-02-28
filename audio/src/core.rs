@@ -9,6 +9,7 @@ use std::{
 use tokio::sync::{mpsc as tokio_chan, oneshot};
 
 use crate::{
+    Volume,
     queue::Queue,
     sink::{SinkRequest, SinkState},
 };
@@ -24,6 +25,7 @@ pub enum PlayerEvent {
     QueuePos { pos: Option<usize> },
     CurrentSong { uri: PathBuf },
     SinkState { state: SinkState },
+    Volume { volume: u8 },
 }
 
 pub struct Player {
@@ -64,6 +66,18 @@ impl Player {
         rx.await.unwrap_or_default()
     }
 
+    pub async fn cur_song(&self) -> Option<PathBuf> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self.tx_sink_request.send(SinkRequest::GetCurSong(tx));
+        rx.await.unwrap_or_default()
+    }
+
+    pub async fn volume(&self) -> u8 {
+        let (tx, rx) = oneshot::channel();
+        let _ = self.tx_sink_request.send(SinkRequest::GetVolume(tx));
+        rx.await.unwrap_or_default().0
+    }
+
     pub fn add_to_queue(
         &mut self,
         uri: impl AsRef<Path> + Into<PathBuf>,
@@ -101,6 +115,10 @@ impl Player {
         self.notify_queue_pos();
 
         Ok(())
+    }
+
+    pub fn change_volume(&self, delta: i8) {
+        let _ = self.tx_sink_request.send(SinkRequest::VolChange(delta));
     }
 
     pub fn pause(&self) {
@@ -169,6 +187,13 @@ impl Player {
 
     pub fn notify_sink_state(&self, state: SinkState) {
         self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::SinkState { state });
+    }
+
+    pub fn notify_volume(&self, volume: Volume) {
+        self.notify_subscribers(
+            PlayerSubTarget::Sink,
+            PlayerEvent::Volume { volume: volume.0 },
+        );
     }
 
     fn play_from_uri(&self, uri: impl AsRef<Path>) {
