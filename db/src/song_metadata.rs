@@ -63,6 +63,10 @@ impl SongMetadata {
         Ok(data)
     }
 
+    pub fn duration(&self) -> Option<u64> {
+        self.duration
+    }
+
     pub fn get(&self, tag_key: &TagKey) -> Option<&str> {
         self.items.get(tag_key).map(|x| x.as_str())
     }

@@ -40,6 +40,8 @@ lazy_static! {
         HashMap::from([(StandardTagKey::AlbumArtist, StandardTagKey::Artist),]);
 }
 
+// TODO: change this into an enum that's either a standard key or an "extended key" (duration,
+// filesize, ...)
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct TagKey(StandardTagKey);
 

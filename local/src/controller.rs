@@ -16,7 +16,7 @@ use tokio_tungstenite::tungstenite::{
     protocol::{CloseFrame, frame::coding::CloseCode},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info};
+use tracing::error;
 
 use crate::config::LocalConfig;
 use libfoksalaudio::{
@@ -97,6 +97,8 @@ async fn handle_client(
 
     // task to respond to the client
     tokio::spawn(async move {
+        let version_msg = Response::version().to_bytes().unwrap();
+        let _ = ws_write.send(WsMessage::Binary(version_msg)).await;
         while let Some(msg) = rx_msg.recv().await {
             let _ = ws_write.send(msg).await;
         }
@@ -136,7 +138,6 @@ async fn handle_client(
                             let _ = tx_msg.send(WsMessage::Pong(data));
                         }
                         Ok(WsMessage::Close(_)) => {
-                            info!("connection closed by the client");
                             break Ok(());
                         }
                         Err(e) => {

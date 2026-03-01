@@ -57,6 +57,8 @@ async fn handle_client(
 
     // task to respond to the client
     tokio::spawn(async move {
+        let version_msg = Response::version().to_bytes().unwrap();
+        let _ = ws_write.send(WsMessage::Binary(version_msg)).await;
         while let Some(msg) = rx_msg.recv().await {
             let _ = ws_write.send(msg).await;
         }
