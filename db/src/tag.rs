@@ -3,47 +3,102 @@ use lazy_static::lazy_static;
 use std::{cmp::Ordering, collections::HashMap, fmt::Display};
 use symphonia::core::meta::StandardTagKey;
 
-pub static N_SUPPORTED_TAGS: usize = 5;
+pub static N_STANDARD_TAGS: usize = 16;
+pub static N_EXTENDED_TAGS: usize = 2;
 
-const TAG_NAMES: [&str; N_SUPPORTED_TAGS] = [
+const ST_TAG_NAMES: [&str; N_STANDARD_TAGS] = [
     "album",
     "albumartist",
     "artist",
+    "composer",
+    "date",
+    "discnumber",
+    "genre",
+    "performer",
+    "producer",
+    "sortalbum",
+    "sortalbumartist",
+    "sortartist",
+    "sortcomposer",
+    "sorttracktitle",
     "tracknumber",
     "tracktitle",
 ];
 
-const TAG_KEYS: [StandardTagKey; N_SUPPORTED_TAGS] = [
+const EXT_TAG_NAMES: [&str; N_EXTENDED_TAGS] = ["duration", "filesize"];
+
+const ST_TAG_KEYS: [StandardTagKey; N_STANDARD_TAGS] = [
     StandardTagKey::Album,
     StandardTagKey::AlbumArtist,
     StandardTagKey::Artist,
+    StandardTagKey::Composer,
+    StandardTagKey::Date,
+    StandardTagKey::DiscNumber,
+    StandardTagKey::Genre,
+    StandardTagKey::Performer,
+    StandardTagKey::Producer,
+    StandardTagKey::SortAlbum,
+    StandardTagKey::SortAlbumArtist,
+    StandardTagKey::SortArtist,
+    StandardTagKey::SortComposer,
+    StandardTagKey::SortTrackTitle,
     StandardTagKey::TrackNumber,
     StandardTagKey::TrackTitle,
 ];
 
+const EXT_TAG_KEYS: [ExtendedTagKey; N_EXTENDED_TAGS] =
+    [ExtendedTagKey::Duration, ExtendedTagKey::FileSize];
+
 lazy_static! {
-    static ref TAG_MAP: HashMap<&'static str, StandardTagKey> = {
-        TAG_NAMES
+    static ref TAG_MAP: HashMap<&'static str, TagKey> = {
+        ST_TAG_NAMES
             .iter()
-            .cloned()
-            .zip(TAG_KEYS.iter().cloned())
+            .copied()
+            .zip(ST_TAG_KEYS.iter().copied().map(TagKey::Standard))
+            .chain(
+                EXT_TAG_NAMES
+                    .iter()
+                    .copied()
+                    .zip(EXT_TAG_KEYS.iter().copied().map(TagKey::Extended)),
+            )
             .collect()
     };
-    static ref INVERSE_TAG_MAP: HashMap<StandardTagKey, &'static str> = {
-        TAG_KEYS
+    static ref INVERSE_TAG_MAP: HashMap<TagKey, &'static str> = {
+        ST_TAG_KEYS
             .iter()
-            .cloned()
-            .zip(TAG_NAMES.iter().cloned())
+            .copied()
+            .map(TagKey::Standard)
+            .zip(ST_TAG_NAMES.iter().copied())
+            .chain(
+                EXT_TAG_KEYS
+                    .iter()
+                    .copied()
+                    .map(TagKey::Extended)
+                    .zip(EXT_TAG_NAMES.iter().copied()),
+            )
             .collect()
     };
-    static ref TAG_FALLBACK_RULES: HashMap<StandardTagKey, StandardTagKey> =
-        HashMap::from([(StandardTagKey::AlbumArtist, StandardTagKey::Artist),]);
+    static ref TAG_FALLBACK_RULES: HashMap<StandardTagKey, StandardTagKey> = HashMap::from([
+        (StandardTagKey::SortAlbum, StandardTagKey::Album),
+        (StandardTagKey::SortAlbumArtist, StandardTagKey::AlbumArtist),
+        (StandardTagKey::SortArtist, StandardTagKey::Artist),
+        (StandardTagKey::SortComposer, StandardTagKey::Composer),
+        (StandardTagKey::SortTrackTitle, StandardTagKey::TrackTitle),
+        (StandardTagKey::AlbumArtist, StandardTagKey::Artist),
+    ]);
 }
 
-// TODO: change this into an enum that's either a standard key or an "extended key" (duration,
-// filesize, ...)
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub struct TagKey(StandardTagKey);
+pub enum ExtendedTagKey {
+    Duration,
+    FileSize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum TagKey {
+    Standard(StandardTagKey),
+    Extended(ExtendedTagKey),
+}
 
 #[derive(Clone, Copy)]
 pub enum SortingOrder {
@@ -59,7 +114,7 @@ impl TryFrom<&str> for TagKey {
             bail!("invalid tag key `{}`", s);
         };
 
-        Ok(Self(key))
+        Ok(key)
     }
 }
 
@@ -67,23 +122,38 @@ impl TryFrom<StandardTagKey> for TagKey {
     type Error = anyhow::Error;
 
     fn try_from(st_key: StandardTagKey) -> Result<Self> {
-        if TAG_KEYS.contains(&st_key) {
-            Ok(Self(st_key))
+        if ST_TAG_KEYS.contains(&st_key) {
+            Ok(Self::Standard(st_key))
         } else {
             bail!("unsupported tag key `{:?}`", st_key);
         }
     }
 }
 
+impl TryFrom<ExtendedTagKey> for TagKey {
+    type Error = anyhow::Error;
+
+    fn try_from(ext_key: ExtendedTagKey) -> Result<Self> {
+        if EXT_TAG_KEYS.contains(&ext_key) {
+            Ok(Self::Extended(ext_key))
+        } else {
+            bail!("unsupported tag key `{:?}`", ext_key);
+        }
+    }
+}
+
 impl Display for TagKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", INVERSE_TAG_MAP.get(&self.0).unwrap())
+        write!(f, "{}", INVERSE_TAG_MAP.get(self).unwrap())
     }
 }
 
 impl TagKey {
     pub fn fallback(self) -> Option<Self> {
-        TAG_FALLBACK_RULES.get(&self.0).copied().map(Self)
+        match self {
+            Self::Standard(st) => TAG_FALLBACK_RULES.get(&st).copied().map(Self::Standard),
+            Self::Extended(_) => None,
+        }
     }
 
     pub fn cmp(&self, a: Option<&str>, b: Option<&str>) -> Ordering {
@@ -91,8 +161,9 @@ impl TagKey {
             (None, None) => Ordering::Equal,
             (None, Some(_)) => Ordering::Less,
             (Some(_), None) => Ordering::Greater,
-            (Some(a), Some(b)) => match self.0 {
-                StandardTagKey::TrackNumber => {
+            (Some(a), Some(b)) => match self {
+                Self::Standard(StandardTagKey::DiscNumber)
+                | Self::Standard(StandardTagKey::TrackNumber) => {
                     let a = parse_out_of(a);
                     let b = parse_out_of(b);
                     match (a, b) {
@@ -135,7 +206,7 @@ mod tests {
         let a = Some("03/12");
         let b = Some("4");
         let c = Some("10/12");
-        let key = TagKey(StandardTagKey::TrackNumber);
+        let key = TagKey::Standard(StandardTagKey::TrackNumber);
 
         assert_eq!(key.cmp(a, b), Ordering::Less);
         assert_eq!(key.cmp(b, c), Ordering::Less);

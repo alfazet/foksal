@@ -1,15 +1,19 @@
 use anyhow::{Result, anyhow};
 use std::{
     collections::HashMap,
+    fs,
     path::{Path, PathBuf},
 };
 use symphonia::core::meta::MetadataRevision;
 
-use crate::{filter::ParsedFilter, fs_utils, tag::TagKey};
+use crate::{
+    filter::ParsedFilter,
+    fs_utils,
+    tag::{ExtendedTagKey, TagKey},
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct SongMetadata {
-    duration: Option<u64>,
     items: HashMap<TagKey, String>,
 }
 
@@ -24,16 +28,14 @@ impl From<&MetadataRevision> for SongMetadata {
             }
         }
 
-        Self {
-            duration: None,
-            items,
-        }
+        Self { items }
     }
 }
 
 impl SongMetadata {
     pub fn try_new(uri: impl AsRef<Path>, root: impl Into<PathBuf>) -> Result<Self> {
-        let mut probe_res = fs_utils::get_probe_result(fs_utils::to_absolute(&uri, root))?;
+        let abs_path = fs_utils::to_absolute(&uri, root);
+        let mut probe_res = fs_utils::get_probe_result(&abs_path)?;
         let from_container = probe_res
             .format
             .metadata()
@@ -54,17 +56,20 @@ impl SongMetadata {
             "no audio track found in `{}`",
             uri.as_ref().to_string_lossy()
         ))?;
-        let duration = match (&track.codec_params.time_base, &track.codec_params.n_frames) {
-            (Some(tb), Some(n)) => Some(tb.calc_time(*n).seconds),
-            _ => None,
-        };
-        data.duration = duration;
+        if let Some(tb) = &track.codec_params.time_base
+            && let Some(n) = &track.codec_params.n_frames
+        {
+            data.items.insert(
+                TagKey::Extended(ExtendedTagKey::Duration),
+                tb.calc_time(*n).seconds.to_string(),
+            );
+        }
+        if let Ok(size) = fs::metadata(abs_path).map(|meta| meta.len()) {
+            data.items
+                .insert(TagKey::Extended(ExtendedTagKey::FileSize), size.to_string());
+        }
 
         Ok(data)
-    }
-
-    pub fn duration(&self) -> Option<u64> {
-        self.duration
     }
 
     pub fn get(&self, tag_key: &TagKey) -> Option<&str> {
@@ -81,7 +86,6 @@ impl SongMetadata {
 
     fn merge(self, other: Self) -> Self {
         Self {
-            duration: self.duration,
             items: self.items.into_iter().chain(other.items).collect(),
         }
     }
