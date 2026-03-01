@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use serde_json::Value;
 use std::{
     collections::HashMap,
     fs,
@@ -14,7 +15,7 @@ use crate::{
 
 #[derive(Clone, Debug, Default)]
 pub struct SongMetadata {
-    items: HashMap<TagKey, String>,
+    items: HashMap<TagKey, Value>,
 }
 
 impl From<&MetadataRevision> for SongMetadata {
@@ -24,7 +25,7 @@ impl From<&MetadataRevision> for SongMetadata {
             if let Some(tag_key) = tag.std_key.and_then(|key| TagKey::try_from(key).ok()) {
                 items
                     .entry(tag_key)
-                    .or_insert_with(|| tag.value.to_string());
+                    .or_insert_with(|| Value::String(tag.value.to_string()));
             }
         }
 
@@ -61,25 +62,31 @@ impl SongMetadata {
         {
             data.items.insert(
                 TagKey::Extended(ExtendedTagKey::Duration),
-                tb.calc_time(*n).seconds.to_string(),
+                Value::Number(tb.calc_time(*n).seconds.into()),
             );
         }
         if let Ok(size) = fs::metadata(abs_path).map(|meta| meta.len()) {
-            data.items
-                .insert(TagKey::Extended(ExtendedTagKey::FileSize), size.to_string());
+            data.items.insert(
+                TagKey::Extended(ExtendedTagKey::FileSize),
+                Value::Number(size.into()),
+            );
         }
 
         Ok(data)
     }
 
-    pub fn get(&self, tag_key: &TagKey) -> Option<&str> {
-        self.items.get(tag_key).map(|x| x.as_str())
+    pub fn get(&self, tag_key: &TagKey) -> Option<&Value> {
+        self.items.get(tag_key)
     }
 
     pub fn matches(&self, filters: &[ParsedFilter]) -> bool {
         filters.iter().all(|filter| {
             self.get(&filter.tag)
-                .map(|value| filter.regex.is_match(value))
+                .map(|value| {
+                    filter
+                        .regex
+                        .is_match(value.as_str().unwrap_or(&value.to_string()))
+                })
                 .is_some_and(|x| x)
         })
     }

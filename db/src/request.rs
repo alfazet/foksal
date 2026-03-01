@@ -166,7 +166,7 @@ impl Db {
                             .iter()
                             .map(|(name, key)| {
                                 let value = match song_data.get(key) {
-                                    Some(v) => Value::String(v.into()),
+                                    Some(v) => v.to_owned(),
                                     None => Value::Null,
                                 };
                                 (name.clone(), value)
@@ -206,10 +206,11 @@ impl Db {
         let values: Vec<_> = groups
             .into_iter()
             .map(|(ident, uris)| {
-                let group_data = group_by_tag_names
-                    .iter()
-                    .cloned()
-                    .zip(ident.iter().map(|value| (*value).into()));
+                let group_data = group_by_tag_names.iter().cloned().zip(
+                    ident
+                        .iter()
+                        .map(|value| value.cloned().unwrap_or(Value::Null)),
+                );
                 let mut map = JsonObject::from_iter(group_data);
                 map.insert(
                     "uris".into(),
@@ -258,25 +259,29 @@ impl Db {
         let mut groups: HashMap<Vec<_>, HashSet<_>> = HashMap::new();
         for (_, data) in self.table.iter() {
             let ident: Vec<_> = group_by.iter().map(|tag| data.get(tag)).collect();
-            groups.entry(ident).or_default().insert(data.get(&tag));
+            groups
+                .entry(ident)
+                .or_default()
+                .insert(data.get(&tag).cloned());
         }
         let group_by_tag_names: Vec<_> = group_by.iter().map(|tag| tag.to_string()).collect();
         let values: Vec<_> = groups
             .into_iter()
             .map(|(ident, values)| {
-                let group_data = group_by_tag_names
-                    .iter()
-                    .cloned()
-                    .zip(ident.iter().map(|value| (*value).into()));
+                let group_data = group_by_tag_names.iter().cloned().zip(
+                    ident
+                        .iter()
+                        .map(|value| value.cloned().unwrap_or(Value::Null)),
+                );
                 let mut map = JsonObject::from_iter(group_data);
                 let mut unique = values.into_iter().collect::<Vec<_>>();
                 if let Some(sort) = sort {
                     match sort {
                         SortingOrder::Ascending => {
-                            unique.sort_unstable_by(|a, b| tag.cmp(a.as_deref(), b.as_deref()))
+                            unique.sort_unstable_by(|a, b| tag.cmp(a.as_ref(), b.as_ref()))
                         }
                         SortingOrder::Descending => {
-                            unique.sort_unstable_by(|a, b| tag.cmp(b.as_deref(), a.as_deref()))
+                            unique.sort_unstable_by(|a, b| tag.cmp(b.as_ref(), a.as_ref()))
                         }
                     }
                 }

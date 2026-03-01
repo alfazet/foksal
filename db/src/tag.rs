@@ -1,5 +1,6 @@
 use anyhow::{Result, bail};
 use lazy_static::lazy_static;
+use serde_json::Value;
 use std::{cmp::Ordering, collections::HashMap, fmt::Display};
 use symphonia::core::meta::StandardTagKey;
 
@@ -156,22 +157,33 @@ impl TagKey {
         }
     }
 
-    pub fn cmp(&self, a: Option<&str>, b: Option<&str>) -> Ordering {
+    pub fn cmp(&self, a: Option<&Value>, b: Option<&Value>) -> Ordering {
         match (a, b) {
             (None, None) => Ordering::Equal,
             (None, Some(_)) => Ordering::Less,
             (Some(_), None) => Ordering::Greater,
             (Some(a), Some(b)) => match self {
                 Self::Standard(StandardTagKey::DiscNumber)
-                | Self::Standard(StandardTagKey::TrackNumber) => {
-                    let a = parse_out_of(a);
-                    let b = parse_out_of(b);
-                    match (a, b) {
-                        (Some(a), Some(b)) => a.cmp(&b),
-                        _ => Ordering::Equal,
+                | Self::Standard(StandardTagKey::TrackNumber) => match (a.as_str(), b.as_str()) {
+                    (Some(a), Some(b)) => {
+                        let a = parse_out_of(a);
+                        let b = parse_out_of(b);
+                        match (a, b) {
+                            (Some(a), Some(b)) => a.cmp(&b),
+                            _ => Ordering::Equal,
+                        }
+                    }
+                    _ => Ordering::Equal,
+                },
+                _ => {
+                    if let (Some(a), Some(b)) = (a.as_str(), b.as_str()) {
+                        a.cmp(b)
+                    } else if let (Some(a), Some(b)) = (a.as_i64(), b.as_i64()) {
+                        a.cmp(&b)
+                    } else {
+                        Ordering::Equal
                     }
                 }
-                _ => a.cmp(b),
             },
         }
     }
@@ -203,9 +215,9 @@ mod tests {
 
     #[test]
     fn test_cmp() {
-        let a = Some("03/12");
-        let b = Some("4");
-        let c = Some("10/12");
+        let a = Some(&Value::String("03/12".into()));
+        let b = Some(&Value::String("4".into()));
+        let c = Some(&Value::String("10/12".into()));
         let key = TagKey::Standard(StandardTagKey::TrackNumber);
 
         assert_eq!(key.cmp(a, b), Ordering::Less);
