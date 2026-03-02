@@ -14,7 +14,7 @@ use libfoksalcommon::net::{
 pub trait ParsedPlayerRequestArgs {}
 
 pub struct ParsedAddToQueueArgs {
-    pub uri: PathBuf,
+    pub uris: Vec<PathBuf>,
     pub pos: Option<usize>,
 }
 
@@ -60,7 +60,7 @@ impl TryFrom<RawAddToQueueArgs> for ParsedAddToQueueArgs {
 
     fn try_from(raw: RawAddToQueueArgs) -> Result<Self> {
         Ok(Self {
-            uri: raw.uri,
+            uris: raw.uris,
             pos: raw.pos,
         })
     }
@@ -107,13 +107,13 @@ impl PlayerRequest {
 }
 
 impl Player {
-    /// adds the song pointed to by `uri` to the playback queue at position `pos` (0-indexed)
+    /// adds the songs pointed to by `uris` to the playback queue, starting at position `pos` (0-indexed)
     /// to add to the end of the queue, don't specify `pos`
     pub fn req_add_to_queue(
         &mut self,
-        ParsedAddToQueueArgs { uri, pos }: ParsedAddToQueueArgs,
+        ParsedAddToQueueArgs { uris, pos }: ParsedAddToQueueArgs,
     ) -> Response {
-        self.add_to_queue(uri, pos).into()
+        self.add_to_queue(uris, pos).into()
     }
 
     /// removes the song at position `pos` from the queue
@@ -206,6 +206,11 @@ impl Player {
 
     pub fn req_queue_random(&mut self) -> Response {
         self.queue_random();
+        Response::new_ok()
+    }
+
+    pub fn req_queue_clear(&mut self) -> Response {
+        self.queue_clear();
         Response::new_ok()
     }
 }

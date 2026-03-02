@@ -87,13 +87,13 @@ impl Player {
 
     pub fn add_to_queue(
         &mut self,
-        uri: impl AsRef<Path> + Into<PathBuf>,
+        uris: Vec<impl AsRef<Path> + Into<PathBuf>>,
         pos: Option<usize>,
     ) -> Result<()> {
         let res = match pos {
-            Some(pos) => self.queue.insert(uri, pos),
+            Some(pos) => self.queue.insert(&uris, pos),
             None => {
-                self.queue.push(uri);
+                self.queue.push(&uris);
                 Ok(())
             }
         };
@@ -154,13 +154,7 @@ impl Player {
             Some(uri) => self.play_from_uri(uri),
             None => self.stop(),
         }
-
-        self.notify_subscribers(
-            PlayerSubTarget::Queue,
-            PlayerEvent::QueuePos {
-                pos: self.queue.pos(),
-            },
-        );
+        self.notify_queue_pos();
     }
 
     pub fn prev(&mut self) {
@@ -169,13 +163,7 @@ impl Player {
             Some(uri) => self.play_from_uri(uri),
             None => self.stop(),
         }
-
-        self.notify_subscribers(
-            PlayerSubTarget::Queue,
-            PlayerEvent::QueuePos {
-                pos: self.queue.pos(),
-            },
-        );
+        self.notify_queue_pos();
     }
 
     pub fn queue_seq(&mut self) {
@@ -184,6 +172,13 @@ impl Player {
 
     pub fn queue_random(&mut self) {
         self.queue.set_mode_random();
+    }
+
+    pub fn queue_clear(&mut self) {
+        self.queue.clear();
+        let _ = self.tx_sink_request.send(SinkRequest::Stop);
+        self.notify_queue_pos();
+        self.notify_queue_content();
     }
 
     pub fn notify_queue_pos(&self) {
@@ -211,16 +206,20 @@ impl Player {
         self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::Elapsed { seconds });
     }
 
-    fn play_from_uri(&self, uri: impl AsRef<Path>) {
-        let _ = self
-            .tx_sink_request
-            .send(SinkRequest::Play(uri.as_ref().to_path_buf()));
+    pub fn notify_song(&self, uri: impl AsRef<Path>) {
         self.notify_subscribers(
             PlayerSubTarget::Sink,
             PlayerEvent::CurrentSong {
                 uri: uri.as_ref().to_path_buf(),
             },
         );
+    }
+
+    fn play_from_uri(&self, uri: impl AsRef<Path>) {
+        let _ = self
+            .tx_sink_request
+            .send(SinkRequest::Play(uri.as_ref().to_path_buf()));
+        self.notify_song(uri);
     }
 
     fn notify_subscribers(&self, target: PlayerSubTarget, event: PlayerEvent) {

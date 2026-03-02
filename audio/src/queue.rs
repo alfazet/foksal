@@ -52,6 +52,12 @@ impl Queue {
         self.mode
     }
 
+    pub fn clear(&mut self) {
+        self.list.clear();
+        self.available.clear();
+        self.pos = None;
+    }
+
     pub fn get(&self, pos: usize) -> Result<&Path> {
         self.list
             .get(pos)
@@ -62,26 +68,38 @@ impl Queue {
             }))
     }
 
-    pub fn insert(&mut self, uri: impl AsRef<Path> + Into<PathBuf>, pos: usize) -> Result<()> {
+    pub fn insert(&mut self, uris: &[impl AsRef<Path> + Into<PathBuf>], pos: usize) -> Result<()> {
         let len = self.list.len();
         ensure!(pos <= len, QueueError::OutOfBounds { index: pos, len });
         if self.mode == QueueMode::Random {
-            self.available.insert(uri.as_ref().into());
+            for uri in uris.iter() {
+                self.available.insert(uri.as_ref().into());
+            }
         }
         if pos == len {
-            self.list.push(uri.into());
+            for uri in uris.iter() {
+                self.list.push(uri.as_ref().into());
+            }
         } else {
-            self.list.insert(pos, uri.into());
+            let mut p = pos;
+            for uri in uris.iter() {
+                self.list.insert(p, uri.as_ref().into());
+                p += 1;
+            }
         }
 
         Ok(())
     }
 
-    pub fn push(&mut self, uri: impl AsRef<Path> + Into<PathBuf>) {
+    pub fn push(&mut self, uris: &[impl AsRef<Path> + Into<PathBuf>]) {
         if self.mode == QueueMode::Random {
-            self.available.insert(uri.as_ref().into());
+            for uri in uris.iter() {
+                self.available.insert(uri.as_ref().into());
+            }
         }
-        self.list.push(uri.into());
+        for uri in uris.iter() {
+            self.list.push(uri.as_ref().into());
+        }
     }
 
     pub fn remove(&mut self, pos: usize) -> Result<()> {

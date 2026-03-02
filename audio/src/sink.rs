@@ -55,7 +55,6 @@ struct Samples {
 #[derive(Default)]
 struct PlaybackData {
     samples: Samples,
-    volume: Volume,
     prev_elapsed: usize,
     uri: Option<PathBuf>,
     audio_spec: Option<AudioSpec>,
@@ -76,6 +75,7 @@ struct Sink {
     device: Device,
     state: SinkState,
     data: PlaybackData,
+    volume: Volume,
     tx_response: tokio_chan::UnboundedSender<SinkResponse>,
     tx_error: broadcast::Sender<SinkError>,
 }
@@ -105,6 +105,7 @@ impl Sink {
             device,
             state: Default::default(),
             data: Default::default(),
+            volume: Default::default(),
             tx_response,
             tx_error,
         }
@@ -171,16 +172,16 @@ impl Sink {
                 let _ = respond_to.send(self.data.uri.clone());
             }
             SinkRequest::GetVolume(respond_to) => {
-                let _ = respond_to.send(self.data.volume);
+                let _ = respond_to.send(self.volume);
             }
             SinkRequest::GetElapsed(respond_to) => {
                 let _ = respond_to.send(self.elapsed());
             }
             SinkRequest::VolChange(delta) => {
-                self.data.volume.change(delta);
+                self.volume.change(delta);
                 let _ = self
                     .tx_response
-                    .send(SinkResponse::VolumeChanged(self.data.volume));
+                    .send(SinkResponse::VolumeChanged(self.volume));
             }
             SinkRequest::Seek(seconds) => {
                 self.seek(seconds);
@@ -319,7 +320,7 @@ impl Sink {
                     let buf = &samples.inner[samples.ptr..=end];
                     match resampler.resample(buf) {
                         Ok(resampled) => {
-                            let mult = self.data.volume.to_mult();
+                            let mult = self.volume.to_mult();
                             for sample in resampled {
                                 let _ = tx_samples.send(*sample * (mult as CommonSample));
                             }

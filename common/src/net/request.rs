@@ -61,7 +61,7 @@ pub struct RawUniqueArgs {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawAddToQueueArgs {
-    pub uri: PathBuf,
+    pub uris: Vec<PathBuf>,
     pub pos: Option<usize>,
 }
 
@@ -118,6 +118,7 @@ pub enum RawPlayerRequest {
     Prev,
     QueueSeq,
     QueueRandom,
+    QueueClear,
 }
 
 #[derive(Deserialize, Serialize)]
