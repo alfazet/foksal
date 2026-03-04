@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow, ensure};
 use rand::seq::IteratorRandom;
+use serde::Serialize;
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -12,11 +13,13 @@ enum QueueError {
     OutOfBounds { index: usize, len: usize },
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum QueueMode {
     #[default]
     Sequential,
     Random,
+    Loop,
 }
 
 #[derive(Debug, Default)]
@@ -50,6 +53,11 @@ impl Queue {
 
     pub fn mode(&self) -> QueueMode {
         self.mode
+    }
+
+    pub fn stop(&mut self) {
+        self.available.clear();
+        self.pos = None;
     }
 
     pub fn clear(&mut self) {
@@ -118,9 +126,13 @@ impl Queue {
         self.mode = QueueMode::Sequential;
     }
 
+    pub fn set_mode_loop(&mut self) {
+        self.mode = QueueMode::Loop;
+    }
+
     pub fn set_mode_random(&mut self) {
         self.mode = QueueMode::Random;
-        self.reinit_available();
+        self.reinit_available(false);
     }
 
     pub fn move_to(&mut self, pos: usize) -> Result<()> {
@@ -140,6 +152,7 @@ impl Queue {
         match self.mode {
             QueueMode::Sequential => self.move_to_next_seq(),
             QueueMode::Random => self.move_to_next_random(),
+            QueueMode::Loop => self.move_to_next_loop(),
         }
     }
 
@@ -176,19 +189,35 @@ impl Queue {
     }
 
     fn move_to_next_random(&mut self) {
+        if self.list.is_empty() {
+            self.pos = None;
+            return;
+        }
+        if self.available.is_empty() {
+            self.reinit_available(true);
+        }
         let mut rng = rand::rng();
         let Some(random_uri) = self.available.iter().choose(&mut rng).cloned() else {
             self.pos = None;
-            self.reinit_available();
             return;
         };
         self.available.remove(&random_uri);
         self.pos = self.list.iter().position(|uri| uri == &random_uri);
     }
 
-    fn reinit_available(&mut self) {
+    fn move_to_next_loop(&mut self) {
+        if self.pos.is_none() {
+            self.pos = if self.list.is_empty() { None } else { Some(0) };
+        }
+    }
+
+    fn reinit_available(&mut self, all: bool) {
         self.available.clear();
-        let p = self.pos.map(|p| p + 1).unwrap_or_default();
+        let p = if all {
+            0
+        } else {
+            self.pos.map(|p| p + 1).unwrap_or_default()
+        };
         for uri in self.list[p..].iter() {
             self.available.insert(uri.to_path_buf());
         }
@@ -202,7 +231,7 @@ mod tests {
     fn init_queue(n: usize) -> Queue {
         let mut q = Queue::new();
         for i in 0..n {
-            q.push(format!("{}", i));
+            q.push(&[format!("{}", i)]);
         }
 
         q
@@ -226,19 +255,19 @@ mod tests {
         let n = 10;
         let mut q = init_queue(n);
         q.set_mode_random();
-        let mut vis = HashSet::new();
-        for _ in 0..n {
-            q.move_to_next();
-            let pos = q.pos().expect("should still have unplayed songs");
-            assert!(
-                vis.insert(pos),
-                "position {} visited twice in random mode",
-                pos
-            );
+        for _ in 0..2 {
+            let mut vis = HashSet::new();
+            for _ in 0..n {
+                q.move_to_next();
+                let pos = q.pos().expect("should still have unplayed songs");
+                assert!(
+                    vis.insert(pos),
+                    "position {} visited twice in random mode",
+                    pos
+                );
+            }
+            assert_eq!(vis.len(), n);
         }
-        assert_eq!(vis.len(), n);
-        q.move_to_next();
-        assert_eq!(q.pos(), None);
     }
 
     #[test]

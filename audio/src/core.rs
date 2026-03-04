@@ -10,7 +10,7 @@ use tokio::sync::{mpsc as tokio_chan, oneshot};
 
 use crate::{
     Volume,
-    queue::Queue,
+    queue::{Queue, QueueMode},
     sink::{SinkRequest, SinkState},
 };
 use libfoksalcommon::net::{request::PlayerSubTarget, response::EventNotif};
@@ -23,6 +23,7 @@ type PlayerSubscribersMap =
 pub enum PlayerEvent {
     QueueContent { queue: Vec<PathBuf> },
     QueuePos { pos: Option<usize> },
+    QueueMode { mode: QueueMode },
     CurrentSong { uri: PathBuf },
     SinkState { state: SinkState },
     Volume { volume: u8 },
@@ -168,10 +169,17 @@ impl Player {
 
     pub fn queue_seq(&mut self) {
         self.queue.set_mode_seq();
+        self.notify_queue_mode();
+    }
+
+    pub fn queue_loop(&mut self) {
+        self.queue.set_mode_loop();
+        self.notify_queue_mode();
     }
 
     pub fn queue_random(&mut self) {
         self.queue.set_mode_random();
+        self.notify_queue_mode();
     }
 
     pub fn queue_clear(&mut self) {
@@ -193,6 +201,11 @@ impl Player {
 
     pub fn notify_sink_state(&self, state: SinkState) {
         self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::SinkState { state });
+    }
+
+    pub fn notify_queue_mode(&self) {
+        let mode = self.queue.mode();
+        self.notify_subscribers(PlayerSubTarget::Queue, PlayerEvent::QueueMode { mode });
     }
 
     pub fn notify_volume(&self, volume: Volume) {

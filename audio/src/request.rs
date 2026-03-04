@@ -131,6 +131,7 @@ impl Player {
     ///     "ok": true,
     ///     "current_song": "current/song",
     ///     "queue_pos": 0,
+    ///     "queue_mode": "random",
     ///     "queue": [
     ///         "current/song",
     ///         "some/other/song"
@@ -150,6 +151,7 @@ impl Player {
             .with_item("queue", &queue.list())
             .with_item("current_song", &cur_song)
             .with_item("queue_pos", &queue.pos())
+            .with_item("queue_mode", &queue.mode())
             .with_item("sink_state", &sink_state)
             .with_item("volume", &volume)
             .with_item("elapsed", &elapsed)
@@ -201,6 +203,11 @@ impl Player {
 
     pub fn req_queue_seq(&mut self) -> Response {
         self.queue_seq();
+        Response::new_ok()
+    }
+
+    pub fn req_queue_loop(&mut self) -> Response {
+        self.queue_loop();
         Response::new_ok()
     }
 

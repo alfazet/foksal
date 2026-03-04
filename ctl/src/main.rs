@@ -27,10 +27,12 @@ enum Command {
     Next,
     /// go to the previous song
     Prev,
-    /// set playback to random mode
-    Random,
     /// set playback to sequential mode
     Sequential,
+    /// set playback to random mode
+    Random,
+    /// set playback to loop mode
+    Loop,
     /// change volume by delta
     Volume { delta: i8 },
     /// seek within the current song
@@ -71,8 +73,9 @@ fn build_request(command: &Command) -> Value {
         Command::Stop => json!({ "kind": "stop" }),
         Command::Next => json!({ "kind": "next" }),
         Command::Prev => json!({ "kind": "prev" }),
-        Command::Random => json!({ "kind": "queue_random" }),
         Command::Sequential => json!({ "kind": "queue_seq" }),
+        Command::Random => json!({ "kind": "queue_random" }),
+        Command::Loop => json!({ "kind": "queue_loop" }),
         Command::Volume { delta } => json!({ "kind": "volume", "delta": delta }),
         Command::Seek { seconds } => json!({ "kind": "seek", "seconds": seconds }),
         Command::Clear => json!({ "kind": "queue_clear" }),
@@ -157,6 +160,10 @@ fn print_state(response: &Value, metadata: &HashMap<String, Value>) {
         .get("sink_state")
         .and_then(|v| v.as_str())
         .unwrap_or("[unknown]");
+    let mode = response
+        .get("queue_mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("[unknown]");
     let volume = response
         .get("volume")
         .and_then(|v| v.as_i64())
@@ -170,6 +177,7 @@ fn print_state(response: &Value, metadata: &HashMap<String, Value>) {
     let (e_secs, d_secs) = (elapsed % 60, duration % 60);
 
     println!("state: {}", state);
+    println!("mode: {}", mode);
     println!("song: {}", song);
     println!("elapsed: {}:{:02}/{}:{:02}", e_mins, e_secs, d_mins, d_secs);
     println!("volume: {}", volume);
@@ -205,7 +213,7 @@ fn main() -> Result<()> {
         .unwrap_or(false);
     if !ok {
         let reason = response.get("reason").and_then(|v| v.as_str()).unwrap();
-        bail!("error: {}", reason);
+        bail!("{}", reason);
     }
 
     if let Command::State = cli.command {

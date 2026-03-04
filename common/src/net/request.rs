@@ -118,6 +118,7 @@ pub enum RawPlayerRequest {
     Prev,
     QueueSeq,
     QueueRandom,
+    QueueLoop,
     QueueClear,
 }
 
