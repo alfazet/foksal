@@ -13,7 +13,7 @@ use libfoksalcommon::utils;
 async fn main() -> Result<()> {
     let cli_args = RemoteArgs::parse();
     utils::setup_logging(cli_args.log_file.as_deref())?;
-    let config = RemoteConfig::new(cli_args)?;
+    let config = ParsedRemoteConfig::try_new(cli_args)?;
     let c_token = CancellationToken::new();
     let controller = controller::spawn(config, c_token.clone());
     tokio::select! {

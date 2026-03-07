@@ -47,11 +47,7 @@ enum Command {
 #[derive(Parser)]
 #[command(name = "cliff", version, about, infer_subcommands = true)]
 struct Cli {
-    /// hostname of the foksal instance
-    #[arg(long, default_value = "localhost", global = true)]
-    host: String,
-
-    /// port that foksal is listening on
+    /// port that the foksal instance is listening on
     #[arg(long, default_value_t = 2137, global = true)]
     port: u16,
 
@@ -201,7 +197,7 @@ fn print_queue(response: &Value, metadata: &HashMap<String, Value>) {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let url = format!("ws://{}:{}", cli.host, cli.port);
+    let url = format!("ws://127.0.0.1:{}", cli.port);
     let (mut ws, _) = tokio_tungstenite::tungstenite::connect(&url)?;
     let _ = ws.read()?;
 

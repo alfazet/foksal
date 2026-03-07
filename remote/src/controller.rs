@@ -21,7 +21,7 @@ use libfoksaldb::{
     request::{DbRequest, DbRequestKind},
 };
 
-use crate::config::RemoteConfig;
+use crate::config::ParsedRemoteConfig;
 
 async fn handle_request(
     bytes: Bytes,
@@ -169,12 +169,12 @@ async fn run(
     }
 }
 
-pub fn spawn(config: RemoteConfig, c_token: CancellationToken) -> JoinHandle<Result<()>> {
+pub fn spawn(config: ParsedRemoteConfig, c_token: CancellationToken) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         let (tx_db_request, rx_db_request) = tokio_chan::unbounded_channel();
         let (tx_file_request, rx_file_request) = tokio_chan::unbounded_channel();
 
-        let RemoteConfig {
+        let ParsedRemoteConfig {
             port,
             music_root,
             ignore_globset,

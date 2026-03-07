@@ -1,7 +1,9 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow, bail};
 use clap::Parser;
-use globset::GlobSet;
-use std::path::{Path, PathBuf};
+use globset::Glob;
+use serde::{Deserialize, Serialize};
+use std::{fs, path::PathBuf};
+use tracing::{info, warn};
 
 use libfoksalcommon::config::*;
 
@@ -28,58 +30,95 @@ pub struct LocalArgs {
     pub log_file: Option<PathBuf>,
 }
 
-pub struct LocalConfig {
+#[derive(Default, Deserialize, Serialize)]
+struct RawLocalConfig {
+    port: Option<u16>,
+    music_root: Option<PathBuf>,
+    audio_backend: Option<String>,
+    allowed_exts: Option<Vec<String>>,
+    ignore_globset: Option<Vec<String>>,
+}
+
+pub struct ParsedLocalConfig {
     pub port: u16,
     pub music_root: PathBuf,
     pub audio_backend: String,
-    pub ignore_globset: GlobSet,
     pub allowed_exts: Vec<String>,
+    pub ignore_globset: Vec<Glob>,
 }
 
-impl LocalConfig {
-    pub fn new(args: LocalArgs) -> Result<Self> {
-        let path = args
-            .config_file
-            .unwrap_or(DEFAULT_CONFIG_FILE.to_path_buf());
-        let from_file = Self::from_file(path)?;
+impl From<&ParsedLocalConfig> for RawLocalConfig {
+    fn from(parsed: &ParsedLocalConfig) -> Self {
+        let ignore_globset: Vec<_> = parsed
+            .ignore_globset
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
 
-        let port = args
-            .port
-            .unwrap_or(from_file.as_ref().map(|c| c.port).unwrap_or(DEFAULT_PORT));
-        let music_root = args.music_root.unwrap_or(
-            from_file
-                .as_ref()
-                .map(|c| c.music_root.to_owned())
-                .unwrap_or(DEFAULT_MUSIC_ROOT.to_owned()),
-        );
-        let audio_backend = args.audio_backend.unwrap_or(
-            from_file
-                .as_ref()
-                .map(|c| c.audio_backend.to_owned())
-                .unwrap_or(DEFAULT_AUDIO_BACKEND.to_owned()),
-        );
-        let ignore_globset = from_file
-            .as_ref()
-            .map(|c| c.ignore_globset.to_owned())
-            .unwrap_or(DEFAULT_IGNORE_GLOBSET.to_owned());
-        let allowed_exts = from_file
-            .as_ref()
-            .map(|c| c.allowed_exts.to_owned())
-            .unwrap_or(DEFAULT_ALLOWED_EXTS.to_vec());
+        Self {
+            port: Some(parsed.port),
+            music_root: Some(parsed.music_root.clone()),
+            audio_backend: Some(parsed.audio_backend.clone()),
+            allowed_exts: Some(parsed.allowed_exts.clone()),
+            ignore_globset: Some(ignore_globset),
+        }
+    }
+}
 
-        Ok(Self {
-            port,
-            music_root,
-            audio_backend,
-            ignore_globset,
-            allowed_exts,
-        })
+impl ParsedLocalConfig {
+    pub fn try_new(args: LocalArgs) -> Result<Self> {
+        let path = args.config_file.as_ref().unwrap_or(&DEFAULT_CONFIG_FILE);
+        if path.exists() && !path.is_file() {
+            bail!("`{}` isn't a file", path.to_string_lossy());
+        }
+
+        match fs::read_to_string(path) {
+            Ok(content) => {
+                let raw = toml::from_str::<RawLocalConfig>(&content)?;
+                info!("reading config from `{}`", path.to_string_lossy());
+
+                Ok(Self::try_merge(raw, &args)?)
+            }
+            Err(e) => {
+                warn!(
+                    "config file `{}` not found ({}), falling back to default",
+                    path.to_string_lossy(),
+                    e
+                );
+                let default_with_cli = Self::try_merge(RawLocalConfig::default(), &args)?;
+                fs::create_dir_all(path.parent().unwrap())?;
+                fs::write(
+                    path,
+                    toml::to_string(&RawLocalConfig::from(&default_with_cli))?,
+                )?;
+                info!("config file `{}` created", path.to_string_lossy());
+
+                Ok(default_with_cli)
+            }
+        }
     }
 
-    /// Ok(None) if the file doesn't exist
-    // Ok(Some) if exists and was parsed
-    // Err if exists and has errors
-    fn from_file(path: impl AsRef<Path>) -> Result<Option<Self>> {
-        Ok(None)
+    fn try_merge(raw: RawLocalConfig, args: &LocalArgs) -> Result<Self> {
+        let ignore_globset = match raw.ignore_globset {
+            Some(ignore_globset) => ignore_globset
+                .iter()
+                .map(|s| Glob::new(s).map_err(|e| anyhow!(e)))
+                .collect(),
+            None => Ok(DEFAULT_IGNORE_GLOBSET.to_vec()),
+        }?;
+
+        Ok(Self {
+            port: args.port.unwrap_or(raw.port.unwrap_or(DEFAULT_PORT)),
+            music_root: args
+                .music_root
+                .clone()
+                .unwrap_or(raw.music_root.unwrap_or(DEFAULT_MUSIC_ROOT.to_owned())),
+            audio_backend: args.audio_backend.clone().unwrap_or(
+                raw.audio_backend
+                    .unwrap_or(DEFAULT_AUDIO_BACKEND.to_owned()),
+            ),
+            allowed_exts: raw.allowed_exts.unwrap_or(DEFAULT_ALLOWED_EXTS.to_vec()),
+            ignore_globset,
+        })
     }
 }

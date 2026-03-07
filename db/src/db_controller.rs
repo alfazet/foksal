@@ -1,5 +1,5 @@
 use anyhow::Result;
-use globset::GlobSet;
+use globset::{Glob, GlobSetBuilder};
 use std::{
     fmt::Display,
     path::{Path, PathBuf},
@@ -66,11 +66,16 @@ async fn run(db: SharedDb, mut rx_db_request: tokio_chan::UnboundedReceiver<DbRe
 
 pub fn spawn(
     music_root: impl AsRef<Path> + Into<PathBuf>,
-    ignore_globset: GlobSet,
+    ignore_globset: Vec<Glob>,
     allowed_exts: Vec<String>,
     rx_db_request: tokio_chan::UnboundedReceiver<DbRequest>,
     rx_file_request: tokio_chan::UnboundedReceiver<FileRequest>,
 ) -> Result<()> {
+    let mut globset_builder = GlobSetBuilder::new();
+    for glob in ignore_globset {
+        globset_builder.add(glob);
+    }
+    let ignore_globset = globset_builder.build()?;
     let music_root = dunce::canonicalize(music_root.as_ref())?;
     let db = Db::new(&music_root, &ignore_globset, &allowed_exts)?;
     let db = SharedDb::new(db);

@@ -34,7 +34,7 @@ use tokio_tungstenite::{
 use tokio_util::sync::CancellationToken;
 use tracing::{error, warn};
 
-use crate::config::ProxyConfig;
+use crate::config::ParsedProxyConfig;
 
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type ClientsMap = HashMap<SocketAddr, tokio_chan::UnboundedSender<RemoteResponseInner>>;
@@ -264,7 +264,7 @@ async fn run(
 
 pub fn spawn(
     ws_stream: WsStream,
-    config: ProxyConfig,
+    config: ParsedProxyConfig,
     c_token: CancellationToken,
 ) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
@@ -274,8 +274,8 @@ pub fn spawn(
         let (tx_sink_request, rx_sink_request) = cbeam_chan::unbounded();
         let (tx_async_error, rx_async_error) = broadcast::channel(1);
 
-        let ProxyConfig {
-            local_port,
+        let ParsedProxyConfig {
+            local_port: port,
             audio_backend,
             ..
         } = config;
@@ -289,7 +289,7 @@ pub fn spawn(
         )?;
 
         let res = tokio::select! {
-            res = run(ws_stream, local_port, tx_player_request, rx_file_request, rx_async_error, c_token.clone()) => res,
+            res = run(ws_stream, port, tx_player_request, rx_file_request, rx_async_error, c_token.clone()) => res,
             _ = c_token.cancelled() => Ok(()),
         };
         c_token.cancel();

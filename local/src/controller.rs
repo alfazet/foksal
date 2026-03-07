@@ -18,7 +18,7 @@ use tokio_tungstenite::tungstenite::{
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
-use crate::config::LocalConfig;
+use crate::config::ParsedLocalConfig;
 use libfoksalaudio::{
     player_controller,
     request::{PlayerRequest, PlayerRequestKind},
@@ -186,7 +186,7 @@ async fn run(
     }
 }
 
-pub fn spawn(config: LocalConfig, c_token: CancellationToken) -> JoinHandle<Result<()>> {
+pub fn spawn(config: ParsedLocalConfig, c_token: CancellationToken) -> JoinHandle<Result<()>> {
     tokio::spawn(async move {
         let (tx_db_request, rx_db_request) = tokio_chan::unbounded_channel();
         let (tx_player_request, rx_player_request) = tokio_chan::unbounded_channel();
@@ -195,7 +195,7 @@ pub fn spawn(config: LocalConfig, c_token: CancellationToken) -> JoinHandle<Resu
         let (tx_sink_request, rx_sink_request) = cbeam_chan::unbounded();
         let (tx_async_error, rx_async_error) = broadcast::channel(1);
 
-        let LocalConfig {
+        let ParsedLocalConfig {
             port,
             music_root,
             audio_backend,
