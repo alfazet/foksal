@@ -39,6 +39,6 @@ tracing = "0.1.44"
 tracing-subscriber = "0.3.22"
 unidecode = "0.3.0"
 
-libfoksalcommon = { path = "common" }
-libfoksalaudio = { path = "audio" }
-libfoksaldb = { path = "db" }
+foksalcommon = { path = "common" }
+foksalaudio = { path = "audio" }
+foksaldb = { path = "db" }

@@ -1,10 +1,13 @@
 use anyhow::{Result, anyhow};
 use crossbeam_channel as cbeam_chan;
-use futures_util::{SinkExt, StreamExt};
-use libfoksalcommon::net::{
-    request::{LocalRequest, RawDbRequest, RawPlayerRequest, SubscribeArgs, UnsubscribeArgs},
+use foksalcommon::net::{
+    request::{
+        LocalRequest, LocalRequestKind, RawDbRequest, RawPlayerRequest, SubscribeArgs,
+        UnsubscribeArgs,
+    },
     response::{EventNotif, Response},
 };
+use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -19,12 +22,12 @@ use tokio_util::sync::CancellationToken;
 use tracing::error;
 
 use crate::config::ParsedLocalConfig;
-use libfoksalaudio::{
+use foksalaudio::{
     player_controller,
     request::{PlayerRequest, PlayerRequestKind},
     sink::{self, SinkError},
 };
-use libfoksaldb::{
+use foksaldb::{
     db_controller,
     request::{DbRequest, DbRequestKind},
 };
@@ -36,14 +39,14 @@ async fn handle_request(
     tx_player_request: &tokio_chan::UnboundedSender<PlayerRequest>,
     tx_event: &tokio_chan::UnboundedSender<EventNotif>,
 ) -> Result<Response> {
-    let request_kind: LocalRequest = match serde_json::from_slice(&bytes).map_err(|e| anyhow!(e)) {
-        Ok(request_kind) => request_kind,
+    let request: LocalRequest = match serde_json::from_slice(&bytes).map_err(|e| anyhow!(e)) {
+        Ok(request) => request,
         Err(e) => return Ok(Response::new_err(format!("invalid request ({})", e))),
     };
     let (respond_to, rx_response) = oneshot::channel();
 
-    match request_kind {
-        LocalRequest::DbRequest(db_request) => {
+    match request.kind {
+        LocalRequestKind::DbRequest(db_request) => {
             let request = match db_request {
                 RawDbRequest::Subscribe(target) => {
                     let args = SubscribeArgs::new(target, *addr, tx_event.clone());
@@ -59,7 +62,7 @@ async fn handle_request(
             };
             tx_db_request.send(request)?;
         }
-        LocalRequest::PlayerRequest(player_request) => {
+        LocalRequestKind::PlayerRequest(player_request) => {
             let request = match player_request {
                 RawPlayerRequest::Subscribe(target) => {
                     let args = SubscribeArgs::new(target, *addr, tx_event.clone());
@@ -78,8 +81,12 @@ async fn handle_request(
             tx_player_request.send(request)?;
         }
     };
+    let response = match request.req_id {
+        Some(req_id) => rx_response.await?.with_item("req_id", &req_id),
+        None => rx_response.await?,
+    };
 
-    Ok(rx_response.await?)
+    Ok(response)
 }
 
 async fn handle_client(

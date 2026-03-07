@@ -11,7 +11,7 @@ use crate::{
     decoder::Decoder,
     request::{DbRequest, DbRequestKind, ParsedDbRequestArgs},
 };
-use libfoksalcommon::net::{
+use foksalcommon::net::{
     request::{FileRequest, RawDbRequest, RawDbRequestArgs, SubscribeArgs, UnsubscribeArgs},
     response::Response,
 };

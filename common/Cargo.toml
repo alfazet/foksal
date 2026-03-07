@@ -1,5 +1,5 @@
 [package]
-name = "libfoksalcommon"
+name = "foksalcommon"
 version.workspace = true
 edition.workspace = true
 

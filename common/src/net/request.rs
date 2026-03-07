@@ -139,9 +139,16 @@ pub struct FileRequest {
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-pub enum LocalRequest {
+pub enum LocalRequestKind {
     DbRequest(RawDbRequest),
     PlayerRequest(RawPlayerRequest),
+}
+
+#[derive(Deserialize)]
+pub struct LocalRequest {
+    #[serde(flatten)]
+    pub kind: LocalRequestKind,
+    pub req_id: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -150,6 +157,7 @@ pub enum RemoteRequest {
     DbRequest {
         request: RawDbRequest,
         client: SocketAddr,
+        req_id: Option<String>,
     },
     FileRequest(RawFileRequest),
 }

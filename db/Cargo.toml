@@ -1,5 +1,5 @@
 [package]
-name = "libfoksaldb"
+name = "foksaldb"
 version.workspace = true
 edition.workspace = true
 
@@ -27,7 +27,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 unidecode = { workspace = true }
 
-libfoksalcommon = { workspace = true }
+foksalcommon = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

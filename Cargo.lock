@@ -565,12 +565,12 @@ dependencies = [
  "clap",
  "crossbeam-channel",
  "dirs",
+ "foksalaudio",
+ "foksalcommon",
+ "foksaldb",
  "futures-util",
  "globset",
  "lazy_static",
- "libfoksalaudio",
- "libfoksalcommon",
- "libfoksaldb",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -590,10 +590,10 @@ dependencies = [
  "clap",
  "crossbeam-channel",
  "dirs",
+ "foksalaudio",
+ "foksalcommon",
  "futures-util",
  "lazy_static",
- "libfoksalaudio",
- "libfoksalcommon",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -612,11 +612,11 @@ dependencies = [
  "anyhow",
  "clap",
  "dirs",
+ "foksalcommon",
+ "foksaldb",
  "futures-util",
  "globset",
  "lazy_static",
- "libfoksalcommon",
- "libfoksaldb",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -626,6 +626,84 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "foksalaudio"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "audioadapter",
+ "audioadapter-buffers",
+ "cpal",
+ "crossbeam-channel",
+ "erased-serde",
+ "foksalcommon",
+ "futures-util",
+ "rand 0.10.0",
+ "rkyv",
+ "rubato",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "foksalcommon"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "crossbeam-channel",
+ "dirs",
+ "erased-serde",
+ "futures-util",
+ "globset",
+ "lazy_static",
+ "rkyv",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "foksaldb"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossbeam-channel",
+ "dunce",
+ "erased-serde",
+ "foksalcommon",
+ "futures-util",
+ "globset",
+ "jwalk",
+ "lazy_static",
+ "lru",
+ "notify",
+ "regex",
+ "rkyv",
+ "serde",
+ "serde_json",
+ "symphonia",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "unidecode",
 ]
 
 [[package]]
@@ -924,84 +1002,6 @@ name = "libc"
 version = "0.2.180"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bcc35a38544a891a5f7c865aca548a982ccb3b8650a5b06d0fd33a10283c56fc"
-
-[[package]]
-name = "libfoksalaudio"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "audioadapter",
- "audioadapter-buffers",
- "cpal",
- "crossbeam-channel",
- "erased-serde",
- "futures-util",
- "libfoksalcommon",
- "rand 0.10.0",
- "rkyv",
- "rubato",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "libfoksalcommon"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "crossbeam-channel",
- "dirs",
- "erased-serde",
- "futures-util",
- "globset",
- "lazy_static",
- "rkyv",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "libfoksaldb"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crossbeam-channel",
- "dunce",
- "erased-serde",
- "futures-util",
- "globset",
- "jwalk",
- "lazy_static",
- "libfoksalcommon",
- "lru",
- "notify",
- "regex",
- "rkyv",
- "serde",
- "serde_json",
- "symphonia",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "unidecode",
-]
 
 [[package]]
 name = "libredox"

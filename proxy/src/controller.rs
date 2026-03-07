@@ -1,17 +1,18 @@
 use anyhow::{Result, anyhow};
 use crossbeam_channel as cbeam_chan;
-use futures_util::{SinkExt, StreamExt};
-use libfoksalaudio::{
+use foksalaudio::{
     player_controller,
     request::{PlayerRequest, PlayerRequestKind},
     sink::{self, SinkError},
 };
-use libfoksalcommon::net::{
+use foksalcommon::net::{
     request::{
-        FileRequest, LocalRequest, RawPlayerRequest, RemoteRequest, SubscribeArgs, UnsubscribeArgs,
+        FileRequest, LocalRequest, LocalRequestKind, RawPlayerRequest, RemoteRequest,
+        SubscribeArgs, UnsubscribeArgs,
     },
     response::{EventNotif, RemoteResponse, RemoteResponseInner, Response},
 };
+use futures_util::{SinkExt, StreamExt};
 use std::{
     collections::{HashMap, VecDeque},
     net::SocketAddr,
@@ -103,7 +104,7 @@ async fn handle_client(
                 match msg {
                     Some(msg) => {
                         if let Ok(WsMessage::Binary(bytes)) = msg {
-                            let request_kind: LocalRequest = match serde_json::from_slice(&bytes).map_err(|e| anyhow!(e)) {
+                            let request: LocalRequest = match serde_json::from_slice(&bytes).map_err(|e| anyhow!(e)) {
                                 Ok(request_kind) => request_kind,
                                 Err(e) => {
                                     let response = Response::new_err(format!("invalid request ({})", e));
@@ -111,14 +112,14 @@ async fn handle_client(
                                     continue;
                                 }
                             };
-                            match request_kind {
-                                LocalRequest::DbRequest(db_request) => {
-                                    let remote_request = RemoteRequest::DbRequest { request: db_request, client: addr };
+                            match request.kind {
+                                LocalRequestKind::DbRequest(db_request) => {
+                                    let remote_request = RemoteRequest::DbRequest { request: db_request, client: addr, req_id: request.req_id };
                                     let _ = tx_remote_request.send(remote_request);
                                 }
-                                LocalRequest::PlayerRequest(player_request) => {
+                                LocalRequestKind::PlayerRequest(player_request) => {
                                     let (respond_to, rx_response) = oneshot::channel();
-                                    let request = match player_request {
+                                    let player_request = match player_request {
                                         RawPlayerRequest::Subscribe(target) => {
                                             let args = SubscribeArgs::new(target, addr, tx_event.clone());
                                             let kind = PlayerRequestKind::Subscribe(args);
@@ -133,8 +134,11 @@ async fn handle_client(
                                             PlayerRequest::new(PlayerRequestKind::Raw(other_request), respond_to)
                                         }
                                     };
-                                    tx_player_request.send(request)?;
-                                    let response = rx_response.await?.to_bytes()?;
+                                    tx_player_request.send(player_request)?;
+                                    let response = match request.req_id {
+                                        Some(req_id) => rx_response.await?.with_item("req_id", &req_id),
+                                        None => rx_response.await?,
+                                    }.to_bytes()?;
                                     let _ = tx_msg.send(WsMessage::Binary(response));
                                 }
                             }
@@ -181,7 +185,7 @@ async fn run(
         }
     });
 
-    // task to pass requests to the proxy->remote ws connection
+    // task to pass requests to the proxy->remote websocket connection
     tokio::spawn(async move {
         loop {
             let msg = tokio::select! {

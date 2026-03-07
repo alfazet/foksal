@@ -1,5 +1,5 @@
 [package]
-name = "libfoksalaudio"
+name = "foksalaudio"
 version.workspace = true
 edition.workspace = true
 
@@ -23,4 +23,4 @@ tokio-util = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-libfoksalcommon = { workspace = true }
+foksalcommon = { workspace = true }

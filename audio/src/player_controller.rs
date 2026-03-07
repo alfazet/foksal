@@ -7,7 +7,7 @@ use crate::{
     request::{ParsedPlayerRequestArgs, PlayerRequest, PlayerRequestKind},
     sink::{SinkRequest, SinkResponse},
 };
-use libfoksalcommon::net::{
+use foksalcommon::net::{
     request::{RawPlayerRequest, RawPlayerRequestArgs, SubscribeArgs, UnsubscribeArgs},
     response::Response,
 };

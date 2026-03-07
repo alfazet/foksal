@@ -13,7 +13,7 @@ use crate::{
     queue::{Queue, QueueMode},
     sink::{SinkRequest, SinkState},
 };
-use libfoksalcommon::net::{request::PlayerSubTarget, response::EventNotif};
+use foksalcommon::net::{request::PlayerSubTarget, response::EventNotif};
 
 type PlayerSubscribersMap =
     HashMap<(PlayerSubTarget, SocketAddr), tokio_chan::UnboundedSender<EventNotif>>;

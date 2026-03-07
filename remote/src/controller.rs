@@ -12,11 +12,11 @@ use tokio_tungstenite::tungstenite::{
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
-use libfoksalcommon::net::{
+use foksalcommon::net::{
     request::{FileRequest, RawDbRequest, RemoteRequest, SubscribeArgs, UnsubscribeArgs},
     response::{EventNotif, RemoteResponse, RemoteResponseInner, RemoteResponseKind, Response},
 };
-use libfoksaldb::{
+use foksaldb::{
     db_controller,
     request::{DbRequest, DbRequestKind},
 };
@@ -41,7 +41,11 @@ async fn handle_request(
     };
 
     match request_kind {
-        RemoteRequest::DbRequest { request, client } => {
+        RemoteRequest::DbRequest {
+            request,
+            client,
+            req_id,
+        } => {
             let (respond_to, rx_response) = oneshot::channel();
             let request = match request {
                 RawDbRequest::Subscribe(target) => {
@@ -57,7 +61,11 @@ async fn handle_request(
                 other_request => DbRequest::new(DbRequestKind::Raw(other_request), respond_to),
             };
             tx_db_request.send(request)?;
-            let inner = RemoteResponseInner::Response(rx_response.await?);
+            let response = match req_id {
+                Some(req_id) => rx_response.await?.with_item("req_id", &req_id),
+                None => rx_response.await?,
+            };
+            let inner = RemoteResponseInner::Response(response);
             let response = RemoteResponse::new(inner, Some(client));
 
             Ok(Some(RemoteResponseKind::TextResponse(response)))

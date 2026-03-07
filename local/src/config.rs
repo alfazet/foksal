@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use tracing::{info, warn};
 
-use libfoksalcommon::config::*;
+use foksalcommon::config::*;
 
 #[derive(Parser)]
 pub struct LocalArgs {

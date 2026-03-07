@@ -20,5 +20,5 @@ toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-libfoksalcommon = { workspace = true }
-libfoksaldb = { workspace = true }
+foksalcommon = { workspace = true }
+foksaldb = { workspace = true }

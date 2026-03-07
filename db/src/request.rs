@@ -13,7 +13,7 @@ use crate::{
     fs_utils,
     tag::{SortingOrder, TagKey},
 };
-use libfoksalcommon::net::{
+use foksalcommon::net::{
     core::JsonObject,
     request::{
         DbSubTarget, RawDbRequest, RawMetadataArgs, RawSelectArgs, RawUniqueArgs, SubscribeArgs,

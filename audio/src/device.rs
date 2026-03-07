@@ -8,7 +8,7 @@ use cpal::{
 use crossbeam_channel as cbeam_chan;
 use tracing::error;
 
-use libfoksalcommon::CommonSample;
+use foksalcommon::CommonSample;
 
 trait Sample: FromSample<CommonSample> + SizedSample + Send + 'static {}
 
