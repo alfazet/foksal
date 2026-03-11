@@ -1,11 +1,12 @@
 use anyhow::{Result, anyhow};
+use base64::prelude::*;
 use serde_json::Value;
 use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
-use symphonia::core::meta::MetadataRevision;
+use symphonia::core::meta::{MetadataRevision, Visual};
 
 use crate::{
     filter::ParsedFilter,
@@ -16,21 +17,7 @@ use crate::{
 #[derive(Clone, Debug, Default)]
 pub struct SongMetadata {
     items: HashMap<TagKey, Value>,
-}
-
-impl From<&MetadataRevision> for SongMetadata {
-    fn from(revision: &MetadataRevision) -> Self {
-        let mut items = HashMap::new();
-        for tag in revision.tags() {
-            if let Some(tag_key) = tag.std_key.and_then(|key| TagKey::try_from(key).ok()) {
-                items
-                    .entry(tag_key)
-                    .or_insert_with(|| Value::String(tag.value.to_string()));
-            }
-        }
-
-        Self { items }
-    }
+    cover_art: Option<Visual>,
 }
 
 impl SongMetadata {
@@ -41,12 +28,16 @@ impl SongMetadata {
             .format
             .metadata()
             .current()
-            .map(SongMetadata::from)
+            .map(SongMetadata::from_revision)
             .unwrap_or_default();
         let from_probe = probe_res
             .metadata
             .get()
-            .map(|m| m.current().map(SongMetadata::from).unwrap_or_default())
+            .map(|m| {
+                m.current()
+                    .map(SongMetadata::from_revision)
+                    .unwrap_or_default()
+            })
             .unwrap_or_default();
         // merge both sources because different formats
         // store data in different places
@@ -91,9 +82,30 @@ impl SongMetadata {
         })
     }
 
+    pub fn cover_art(&self) -> Option<String> {
+        self.cover_art
+            .as_ref()
+            .map(|image| BASE64_STANDARD.encode(&image.data))
+    }
+
+    fn from_revision(revision: &MetadataRevision) -> Self {
+        let mut items = HashMap::new();
+        for tag in revision.tags() {
+            if let Some(tag_key) = tag.std_key.and_then(|key| TagKey::try_from(key).ok()) {
+                items
+                    .entry(tag_key)
+                    .or_insert_with(|| Value::String(tag.value.to_string()));
+            }
+        }
+        let cover_art = revision.visuals().first().cloned();
+
+        Self { items, cover_art }
+    }
+
     fn merge(self, other: Self) -> Self {
         Self {
             items: self.items.into_iter().chain(other.items).collect(),
+            cover_art: self.cover_art.or(other.cover_art),
         }
     }
 }

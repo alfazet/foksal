@@ -10,6 +10,7 @@ edition = "2024"
 anyhow = "1.0.100"
 audioadapter = "2.0.0"
 audioadapter-buffers = "2.0.0"
+base64 = "0.22.1"
 clap = { version = "4.5.57", features = ["derive"] }
 cpal = "0.17.3"
 crossbeam-channel = "0.5.15"

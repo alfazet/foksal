@@ -16,8 +16,8 @@ use crate::{
 use foksalcommon::net::{
     core::JsonObject,
     request::{
-        DbSubTarget, RawDbRequest, RawMetadataArgs, RawSelectArgs, RawUniqueArgs, SubscribeArgs,
-        UnsubscribeArgs,
+        DbSubTarget, RawCoverArtArgs, RawDbRequest, RawMetadataArgs, RawSelectArgs, RawUniqueArgs,
+        SubscribeArgs, UnsubscribeArgs,
     },
     response::{EventNotif, Response},
 };
@@ -38,6 +38,10 @@ pub struct ParsedUniqueArgs {
     pub tag: TagKey,
     pub group_by: Vec<TagKey>,
     pub sort: Option<SortingOrder>,
+}
+
+pub struct ParsedCoverArtArgs {
+    pub uri: PathBuf,
 }
 
 pub enum DbRequestKind {
@@ -132,6 +136,16 @@ impl TryFrom<RawUniqueArgs> for ParsedUniqueArgs {
             group_by,
             sort,
         })
+    }
+}
+
+impl ParsedDbRequestArgs for ParsedCoverArtArgs {}
+
+impl TryFrom<RawCoverArtArgs> for ParsedCoverArtArgs {
+    type Error = anyhow::Error;
+
+    fn try_from(raw: RawCoverArtArgs) -> Result<Self> {
+        Ok(Self { uri: raw.uri })
     }
 }
 
@@ -293,6 +307,24 @@ impl Db {
 
         Response::new_ok().with_item("values", &values)
     }
+
+    /// returns the base64 cover art of the song (if available)
+    /// response format:
+    /// ```json
+    /// {
+    ///     "ok": true,
+    ///     "image": "<some base64 encoded data>",
+    /// }
+    /// ```
+    pub fn cover_art(&self, ParsedCoverArtArgs { uri }: ParsedCoverArtArgs) -> Response {
+        match self.table.get(&uri) {
+            Some(metadata) => match metadata.cover_art() {
+                Some(image) => Response::new_ok().with_item("image", &image),
+                None => Response::new_err("no cover art available"),
+            },
+            None => Response::new_err("song not found"),
+        }
+    }
 }
 
 impl SharedDb {
@@ -324,5 +356,10 @@ impl SharedDb {
     pub fn req_unique(&self, args: ParsedUniqueArgs) -> Response {
         let db = self.inner.read().unwrap();
         db.unique(args)
+    }
+
+    pub fn req_cover_art(&self, args: ParsedCoverArtArgs) -> Response {
+        let db = self.inner.read().unwrap();
+        db.cover_art(args)
     }
 }

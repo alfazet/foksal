@@ -44,7 +44,7 @@ async fn handle_request(
         RemoteRequest::DbRequest {
             request,
             client,
-            req_id,
+            token,
         } => {
             let (respond_to, rx_response) = oneshot::channel();
             let request = match request {
@@ -61,8 +61,8 @@ async fn handle_request(
                 other_request => DbRequest::new(DbRequestKind::Raw(other_request), respond_to),
             };
             tx_db_request.send(request)?;
-            let response = match req_id {
-                Some(req_id) => rx_response.await?.with_item("req_id", &req_id),
+            let response = match token {
+                Some(token) => rx_response.await?.with_item("token", &token),
                 None => rx_response.await?,
             };
             let inner = RemoteResponseInner::Response(response);

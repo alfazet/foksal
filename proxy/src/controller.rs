@@ -114,7 +114,7 @@ async fn handle_client(
                             };
                             match request.kind {
                                 LocalRequestKind::DbRequest(db_request) => {
-                                    let remote_request = RemoteRequest::DbRequest { request: db_request, client: addr, req_id: request.req_id };
+                                    let remote_request = RemoteRequest::DbRequest { request: db_request, client: addr, token: request.token };
                                     let _ = tx_remote_request.send(remote_request);
                                 }
                                 LocalRequestKind::PlayerRequest(player_request) => {
@@ -135,8 +135,8 @@ async fn handle_client(
                                         }
                                     };
                                     tx_player_request.send(player_request)?;
-                                    let response = match request.req_id {
-                                        Some(req_id) => rx_response.await?.with_item("req_id", &req_id),
+                                    let response = match request.token {
+                                        Some(token) => rx_response.await?.with_item("token", &token),
                                         None => rx_response.await?,
                                     }.to_bytes()?;
                                     let _ = tx_msg.send(WsMessage::Binary(response));

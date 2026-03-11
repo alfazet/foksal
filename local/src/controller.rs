@@ -81,8 +81,8 @@ async fn handle_request(
             tx_player_request.send(request)?;
         }
     };
-    let response = match request.req_id {
-        Some(req_id) => rx_response.await?.with_item("req_id", &req_id),
+    let response = match request.token {
+        Some(token) => rx_response.await?.with_item("token", &token),
         None => rx_response.await?,
     };
 

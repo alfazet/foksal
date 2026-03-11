@@ -58,6 +58,12 @@ pub struct RawUniqueArgs {
     pub sort: Option<String>,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawCoverArtArgs {
+    pub uri: PathBuf,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawAddToQueueArgs {
@@ -97,6 +103,7 @@ pub enum RawDbRequest {
     Metadata(RawMetadataArgs),
     Select(RawSelectArgs),
     Unique(RawUniqueArgs),
+    CoverArt(RawCoverArtArgs),
 }
 
 #[derive(Deserialize)]
@@ -148,7 +155,7 @@ pub enum LocalRequestKind {
 pub struct LocalRequest {
     #[serde(flatten)]
     pub kind: LocalRequestKind,
-    pub req_id: Option<String>,
+    pub token: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -157,7 +164,7 @@ pub enum RemoteRequest {
     DbRequest {
         request: RawDbRequest,
         client: SocketAddr,
-        req_id: Option<String>,
+        token: Option<String>,
     },
     FileRequest(RawFileRequest),
 }
@@ -191,6 +198,8 @@ impl RawDbRequestArgs for RawMetadataArgs {}
 impl RawDbRequestArgs for RawSelectArgs {}
 
 impl RawDbRequestArgs for RawUniqueArgs {}
+
+impl RawDbRequestArgs for RawCoverArtArgs {}
 
 impl RawPlayerRequestArgs for RawAddToQueueArgs {}
 
