@@ -50,7 +50,7 @@ async fn run(db: SharedDb, mut rx_db_request: tokio_chan::UnboundedReceiver<DbRe
                         db.req_cover_art(parsed_args)
                     })
                 }
-                _ => unreachable!(), // subscription requests are handled below
+                RawDbRequest::Subscribe(_) | RawDbRequest::Unsubscribe(_) => unreachable!(),
             },
             DbRequestKind::Subscribe(SubscribeArgs {
                 target,

@@ -61,6 +61,16 @@ async fn run(
                                 player.req_remove_from_queue(args)
                             })
                         }
+                        RawPlayerRequest::QueueMove(raw_args) => {
+                            handle_request_mut(&mut player, raw_args, |player, args| {
+                                player.req_queue_move(args)
+                            })
+                        }
+                        RawPlayerRequest::AddAndPlay(raw_args) => {
+                            handle_request_mut(&mut player, raw_args, |player, args| {
+                                player.req_add_and_play(args)
+                            })
+                        }
                         RawPlayerRequest::Play(raw_args) => {
                             handle_request_mut(&mut player, raw_args, |player, args| player.req_play(args))
                         }
@@ -81,7 +91,7 @@ async fn run(
                         RawPlayerRequest::QueueLoop => player.req_queue_loop(),
                         RawPlayerRequest::QueueRandom => player.req_queue_random(),
                         RawPlayerRequest::QueueClear => player.req_queue_clear(),
-                        _ => unreachable!(), // subscription requests are handled below
+                        RawPlayerRequest::Subscribe(_) | RawPlayerRequest::Unsubscribe(_) => unreachable!(),
                     },
                     PlayerRequestKind::Subscribe(SubscribeArgs {
                         target,

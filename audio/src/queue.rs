@@ -110,6 +110,11 @@ impl Queue {
         }
     }
 
+    pub fn push_and_move_to(&mut self, uris: &[impl AsRef<Path> + Into<PathBuf>]) {
+        let _ = self.move_to(self.list.len() - 1);
+        self.push(uris);
+    }
+
     pub fn remove(&mut self, pos: usize) -> Result<()> {
         let len = self.list.len();
         ensure!(pos < len, QueueError::OutOfBounds { index: pos, len });
@@ -117,6 +122,26 @@ impl Queue {
         self.available.remove(&removed_uri);
         if self.pos.is_some_and(|p| p >= pos) {
             self.move_to_prev();
+        }
+
+        Ok(())
+    }
+
+    pub fn move_pos(&mut self, from: usize, to: usize) -> Result<()> {
+        let len = self.list.len();
+        ensure!(from < len, QueueError::OutOfBounds { index: from, len });
+        ensure!(to <= len, QueueError::OutOfBounds { index: to, len });
+        let moved = self.list.remove(from);
+        self.list.insert(to, moved);
+
+        if let Some(p) = self.pos {
+            if p == from {
+                self.pos = Some(to);
+            } else if from < p && p < to {
+                self.pos = Some(p - 1);
+            } else if to < p && p < from {
+                self.pos = Some(p + 1);
+            }
         }
 
         Ok(())

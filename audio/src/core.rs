@@ -109,9 +109,22 @@ impl Player {
         if self.queue.pos().is_some_and(|p| p == pos) {
             self.stop();
         }
+        let prev_pos = self.queue.pos();
         self.queue.remove(pos)?;
         self.notify_queue_content();
-        self.notify_queue_pos();
+        if prev_pos != self.queue.pos() {
+            self.notify_queue_pos();
+        }
+
+        Ok(())
+    }
+
+    pub fn queue_move(&mut self, from: usize, to: usize) -> Result<()> {
+        let prev_pos = self.queue.pos();
+        self.queue.move_pos(from, to)?;
+        if prev_pos != self.queue.pos() {
+            self.notify_queue_pos();
+        }
 
         Ok(())
     }
@@ -123,6 +136,12 @@ impl Player {
         self.notify_queue_pos();
 
         Ok(())
+    }
+
+    pub fn add_and_play(&mut self, uris: Vec<impl AsRef<Path> + Into<PathBuf>>) {
+        self.queue.push_and_move_to(&uris);
+        self.notify_queue_content();
+        self.next();
     }
 
     pub fn change_volume(&self, delta: i8) {

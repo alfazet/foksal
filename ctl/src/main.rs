@@ -98,15 +98,15 @@ fn format_song(uri: impl AsRef<str>, metadata: Option<&Value>) -> String {
                 .get("artist")
                 .and_then(|v| v.as_str())
                 .unwrap_or("[unknown]");
-            let title = metadata
-                .get("tracktitle")
-                .and_then(|v| v.as_str())
-                .unwrap_or("[unknown]");
             let album = metadata
                 .get("album")
                 .and_then(|v| v.as_str())
                 .unwrap_or("[unknown]");
-            format!("{} - {} - {}", artist, title, album)
+            let title = metadata
+                .get("tracktitle")
+                .and_then(|v| v.as_str())
+                .unwrap_or("[unknown]");
+            format!("{} - {} - {}", artist, album, title)
         }
         None => uri.as_ref().to_string(),
     }

@@ -79,6 +79,19 @@ pub struct RawRemoveFromQueueArgs {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct RawQueueMoveArgs {
+    pub from: usize,
+    pub to: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawAddAndPlayArgs {
+    pub uris: Vec<PathBuf>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RawPlayArgs {
     pub pos: usize,
 }
@@ -113,6 +126,8 @@ pub enum RawPlayerRequest {
     Unsubscribe(PlayerSubTarget),
     AddToQueue(RawAddToQueueArgs),
     RemoveFromQueue(RawRemoveFromQueueArgs),
+    QueueMove(RawQueueMoveArgs),
+    AddAndPlay(RawAddAndPlayArgs),
     Play(RawPlayArgs),
     Seek(RawSeekArgs),
     Volume(RawVolumeArgs),
@@ -205,7 +220,11 @@ impl RawPlayerRequestArgs for RawAddToQueueArgs {}
 
 impl RawPlayerRequestArgs for RawRemoveFromQueueArgs {}
 
+impl RawPlayerRequestArgs for RawQueueMoveArgs {}
+
 impl RawPlayerRequestArgs for RawPlayArgs {}
+
+impl RawPlayerRequestArgs for RawAddAndPlayArgs {}
 
 impl RawPlayerRequestArgs for RawVolumeArgs {}
 

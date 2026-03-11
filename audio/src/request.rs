@@ -5,8 +5,9 @@ use tokio::sync::oneshot;
 use crate::core::Player;
 use foksalcommon::net::{
     request::{
-        PlayerSubTarget, RawAddToQueueArgs, RawPlayArgs, RawPlayerRequest, RawRemoveFromQueueArgs,
-        RawSeekArgs, RawVolumeArgs, SubscribeArgs, UnsubscribeArgs,
+        PlayerSubTarget, RawAddAndPlayArgs, RawAddToQueueArgs, RawPlayArgs, RawPlayerRequest,
+        RawQueueMoveArgs, RawRemoveFromQueueArgs, RawSeekArgs, RawVolumeArgs, SubscribeArgs,
+        UnsubscribeArgs,
     },
     response::Response,
 };
@@ -22,8 +23,17 @@ pub struct ParsedRemoveFromQueueArgs {
     pub pos: usize,
 }
 
+pub struct ParsedQueueMoveArgs {
+    pub from: usize,
+    pub to: usize,
+}
+
 pub struct ParsedPlayArgs {
     pub pos: usize,
+}
+
+pub struct ParsedAddAndPlayArgs {
+    pub uris: Vec<PathBuf>,
 }
 
 pub struct ParsedVolumeArgs {
@@ -49,7 +59,11 @@ impl ParsedPlayerRequestArgs for ParsedAddToQueueArgs {}
 
 impl ParsedPlayerRequestArgs for ParsedRemoveFromQueueArgs {}
 
+impl ParsedPlayerRequestArgs for ParsedQueueMoveArgs {}
+
 impl ParsedPlayerRequestArgs for ParsedPlayArgs {}
+
+impl ParsedPlayerRequestArgs for ParsedAddAndPlayArgs {}
 
 impl ParsedPlayerRequestArgs for ParsedVolumeArgs {}
 
@@ -74,11 +88,30 @@ impl TryFrom<RawRemoveFromQueueArgs> for ParsedRemoveFromQueueArgs {
     }
 }
 
+impl TryFrom<RawQueueMoveArgs> for ParsedQueueMoveArgs {
+    type Error = anyhow::Error;
+
+    fn try_from(raw: RawQueueMoveArgs) -> Result<Self> {
+        Ok(Self {
+            from: raw.from,
+            to: raw.to,
+        })
+    }
+}
+
 impl TryFrom<RawPlayArgs> for ParsedPlayArgs {
     type Error = anyhow::Error;
 
     fn try_from(raw: RawPlayArgs) -> Result<Self> {
         Ok(Self { pos: raw.pos })
+    }
+}
+
+impl TryFrom<RawAddAndPlayArgs> for ParsedAddAndPlayArgs {
+    type Error = anyhow::Error;
+
+    fn try_from(raw: RawAddAndPlayArgs) -> Result<Self> {
+        Ok(Self { uris: raw.uris })
     }
 }
 
@@ -124,6 +157,15 @@ impl Player {
         self.remove_from_queue(pos).into()
     }
 
+    /// moves the song from position `from` to position `to` (0-indexed)
+    /// the positions of other songs in the queue change accordingly
+    pub fn req_queue_move(
+        &mut self,
+        ParsedQueueMoveArgs { from, to }: ParsedQueueMoveArgs,
+    ) -> Response {
+        self.queue_move(from, to).into()
+    }
+
     /// returns the player's state
     /// response format:
     /// ```json
@@ -157,8 +199,19 @@ impl Player {
             .with_item("elapsed", &elapsed)
     }
 
+    /// plays the song at position `pos` (0-indexed)
     pub fn req_play(&mut self, ParsedPlayArgs { pos }: ParsedPlayArgs) -> Response {
         self.play(pos).into()
+    }
+
+    /// adds songs songs from `uris` to the end of the playback queue
+    /// and starts playing them (beginning at the first one)
+    pub fn req_add_and_play(
+        &mut self,
+        ParsedAddAndPlayArgs { uris }: ParsedAddAndPlayArgs,
+    ) -> Response {
+        self.add_and_play(uris);
+        Response::new_ok()
     }
 
     pub fn req_volume(&self, ParsedVolumeArgs { delta }: ParsedVolumeArgs) -> Response {
