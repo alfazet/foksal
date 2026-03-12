@@ -27,7 +27,7 @@ pub enum PlayerEvent {
     CurrentSong { uri: PathBuf },
     SinkState { state: SinkState },
     Volume { volume: u8 },
-    Elapsed { seconds: usize },
+    Elapsed { seconds: u64 },
 }
 
 pub struct Player {
@@ -80,7 +80,7 @@ impl Player {
         rx.await.unwrap_or_default().0
     }
 
-    pub async fn elapsed(&self) -> usize {
+    pub async fn elapsed(&self) -> u64 {
         let (tx, rx) = oneshot::channel();
         let _ = self.tx_sink_request.send(SinkRequest::GetElapsed(tx));
         rx.await.unwrap_or_default()
@@ -234,7 +234,7 @@ impl Player {
         );
     }
 
-    pub fn notify_elapsed(&self, seconds: usize) {
+    pub fn notify_elapsed(&self, seconds: u64) {
         self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::Elapsed { seconds });
     }
 

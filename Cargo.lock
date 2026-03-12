@@ -553,7 +553,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "foksal-ctl"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -565,7 +565,7 @@ dependencies = [
 
 [[package]]
 name = "foksal-local"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -590,7 +590,7 @@ dependencies = [
 
 [[package]]
 name = "foksal-proxy"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -613,7 +613,7 @@ dependencies = [
 
 [[package]]
 name = "foksal-remote"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -636,7 +636,7 @@ dependencies = [
 
 [[package]]
 name = "foksalaudio"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "audioadapter",
@@ -661,7 +661,7 @@ dependencies = [
 
 [[package]]
 name = "foksalcommon"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -684,7 +684,7 @@ dependencies = [
 
 [[package]]
 name = "foksaldb"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "base64",

@@ -28,7 +28,7 @@ pub enum SinkRequest {
     GetState(oneshot::Sender<SinkState>),
     GetCurSong(oneshot::Sender<Option<PathBuf>>),
     GetVolume(oneshot::Sender<Volume>),
-    GetElapsed(oneshot::Sender<usize>),
+    GetElapsed(oneshot::Sender<u64>),
     Play(PathBuf),
     VolChange(i8),
     Seek(isize),
@@ -42,7 +42,7 @@ pub enum SinkResponse {
     SongOver,
     StateChanged(SinkState),
     VolumeChanged(Volume),
-    Elapsed(usize),
+    Elapsed(u64),
 }
 
 #[derive(Default)]
@@ -55,7 +55,7 @@ struct Samples {
 #[derive(Default)]
 struct PlaybackData {
     samples: Samples,
-    prev_elapsed: usize,
+    prev_elapsed: u64,
     uri: Option<PathBuf>,
     audio_spec: Option<AudioSpec>,
     resampler: Option<ResamplerWrapper>,
@@ -132,12 +132,12 @@ impl Sink {
         }
     }
 
-    fn elapsed(&self) -> usize {
+    fn elapsed(&self) -> u64 {
         match self.data.audio_spec {
             Some(AudioSpec {
                 n_channels,
                 sample_rate,
-            }) => self.data.samples.ptr / (n_channels * sample_rate),
+            }) => self.data.samples.ptr as u64 / (n_channels * sample_rate) as u64,
             None => 0,
         }
     }

@@ -43,12 +43,12 @@ enum Command {
     State,
 }
 
-/// foksal-ctl – CLI client to control foksal
+/// foksal-ctl – cli foksal controller
 #[derive(Parser)]
-#[command(name = "cliff", version, about, infer_subcommands = true)]
+#[command(name = "foksal-ctl", version, about, infer_subcommands = true)]
 struct Cli {
     /// port that the foksal instance is listening on
-    #[arg(long, default_value_t = 2137, global = true)]
+    #[arg(short = 'p', long, default_value_t = 2137, global = true)]
     port: u16,
 
     #[command(subcommand)]
@@ -184,7 +184,7 @@ fn print_queue(response: &Value, metadata: &HashMap<String, Value>) {
     if let Some(list) = response.get("queue").and_then(|v| v.as_array()) {
         println!("queue:");
         for (i, uri) in list.iter().enumerate() {
-            let uri = uri.as_str().unwrap();
+            let uri = uri.as_str().unwrap_or_default();
             let display = format_song(uri, metadata.get(uri));
             if queue_pos.is_some_and(|p| p as usize == i) {
                 println!("{}*: {}", i, display);

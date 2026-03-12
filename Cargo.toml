@@ -3,42 +3,42 @@ members = ["common", "local", "proxy", "remote", "ctl"]
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 
 [workspace.dependencies]
-anyhow = "1.0.100"
-audioadapter = "2.0.0"
-audioadapter-buffers = "2.0.0"
-base64 = "0.22.1"
-clap = { version = "4.5.57", features = ["derive"] }
-cpal = "0.17.3"
-crossbeam-channel = "0.5.15"
-dirs = "6.0.0"
-dunce = "1.0.5"
-erased-serde = "0.4.9"
-futures-util = "0.3.31"
-globset = "0.4.18"
-jwalk = "0.8.1"
-lazy_static = "1.5.0"
-lru = "0.16.3"
-notify = { version = "8.2.0", features = ["crossbeam-channel"] }
+anyhow = "1.0"
+audioadapter = "2.0"
+audioadapter-buffers = "2.0"
+base64 = "0.22"
+clap = { version = "4.5", features = ["derive"] }
+cpal = "0.17"
+crossbeam-channel = "0.5"
+dirs = "6.0"
+dunce = "1.0"
+erased-serde = "0.4"
+futures-util = "0.3"
+globset = "0.4"
+jwalk = "0.8"
+lazy_static = "1.5"
+lru = "0.16"
+notify = { version = "8.2", features = ["crossbeam-channel"] }
 rand = "0.10"
-regex = "1.12.3"
-rkyv = "0.8.15"
-rubato = "1.0.1"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
-symphonia = { version = "0.5.5", features = ["all", "opt-simd"] }
-tempfile = "3.10.1"
-thiserror = "2.0.18"
-tokio = { version = "1.49.0", features = ["full"] }
-tokio-tungstenite = "0.28.0"
-tokio-util = "0.7.18"
-toml = "1.0.3"
-tracing = "0.1.44"
-tracing-subscriber = "0.3.22"
-unidecode = "0.3.0"
+regex = "1.12"
+rkyv = "0.8"
+rubato = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+symphonia = { version = "0.5", features = ["all", "opt-simd"] }
+tempfile = "3.10"
+thiserror = "2.0"
+tokio = { version = "1.49", features = ["full"] }
+tokio-tungstenite = "0.28"
+tokio-util = "0.7"
+toml = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+unidecode = "0.3"
 
 foksalcommon = { path = "common" }
 foksalaudio = { path = "audio" }
