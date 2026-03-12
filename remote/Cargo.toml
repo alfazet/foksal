@@ -2,6 +2,8 @@
 name = "foksal-remote"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
@@ -20,5 +22,5 @@ toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-foksalcommon = { workspace = true }
-foksaldb = { workspace = true }
+libfoksalcommon = { workspace = true }
+libfoksaldb = { workspace = true }

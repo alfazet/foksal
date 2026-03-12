@@ -16,7 +16,7 @@ use tokio_tungstenite::tungstenite::Bytes;
 use tracing::error;
 
 use crate::fs_utils;
-use foksalcommon::{
+use libfoksalcommon::{
     AudioChunk, AudioSpec, CommonSample,
     net::request::{FileRequest, RawFileRequest},
 };

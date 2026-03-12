@@ -7,7 +7,7 @@ use tokio::signal;
 use tokio_util::sync::CancellationToken;
 
 use crate::config::*;
-use foksalcommon::utils;
+use libfoksalcommon::utils;
 
 #[tokio::main]
 async fn main() -> Result<()> {

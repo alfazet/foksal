@@ -558,6 +558,7 @@ dependencies = [
  "anyhow",
  "clap",
  "lazy_static",
+ "libfoksalclient",
  "serde_json",
  "thiserror 2.0.18",
  "tokio-tungstenite",
@@ -571,12 +572,12 @@ dependencies = [
  "clap",
  "crossbeam-channel",
  "dirs",
- "foksalaudio",
- "foksalcommon",
- "foksaldb",
  "futures-util",
  "globset",
  "lazy_static",
+ "libfoksalaudio",
+ "libfoksalcommon",
+ "libfoksaldb",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -596,10 +597,10 @@ dependencies = [
  "clap",
  "crossbeam-channel",
  "dirs",
- "foksalaudio",
- "foksalcommon",
  "futures-util",
  "lazy_static",
+ "libfoksalaudio",
+ "libfoksalcommon",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -618,11 +619,11 @@ dependencies = [
  "anyhow",
  "clap",
  "dirs",
- "foksalcommon",
- "foksaldb",
  "futures-util",
  "globset",
  "lazy_static",
+ "libfoksalcommon",
+ "libfoksaldb",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -632,85 +633,6 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "foksalaudio"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "audioadapter",
- "audioadapter-buffers",
- "cpal",
- "crossbeam-channel",
- "erased-serde",
- "foksalcommon",
- "futures-util",
- "rand 0.10.0",
- "rkyv",
- "rubato",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "foksalcommon"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "clap",
- "crossbeam-channel",
- "dirs",
- "erased-serde",
- "futures-util",
- "globset",
- "lazy_static",
- "rkyv",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "foksaldb"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "base64",
- "crossbeam-channel",
- "dunce",
- "erased-serde",
- "foksalcommon",
- "futures-util",
- "globset",
- "jwalk",
- "lazy_static",
- "lru",
- "notify",
- "regex",
- "rkyv",
- "serde",
- "serde_json",
- "symphonia",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "unidecode",
 ]
 
 [[package]]
@@ -1009,6 +931,99 @@ name = "libc"
 version = "0.2.180"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bcc35a38544a891a5f7c865aca548a982ccb3b8650a5b06d0fd33a10283c56fc"
+
+[[package]]
+name = "libfoksalaudio"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "audioadapter",
+ "audioadapter-buffers",
+ "cpal",
+ "crossbeam-channel",
+ "erased-serde",
+ "futures-util",
+ "libfoksalcommon",
+ "rand 0.10.0",
+ "rkyv",
+ "rubato",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "libfoksalclient"
+version = "1.0.0"
+dependencies = [
+ "base64",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "uuid",
+]
+
+[[package]]
+name = "libfoksalcommon"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "crossbeam-channel",
+ "dirs",
+ "erased-serde",
+ "futures-util",
+ "globset",
+ "lazy_static",
+ "rkyv",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "libfoksaldb"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "crossbeam-channel",
+ "dunce",
+ "erased-serde",
+ "futures-util",
+ "globset",
+ "jwalk",
+ "lazy_static",
+ "libfoksalcommon",
+ "lru",
+ "notify",
+ "regex",
+ "rkyv",
+ "serde",
+ "serde_json",
+ "symphonia",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "unidecode",
+]
 
 [[package]]
 name = "libredox"
@@ -2341,10 +2356,11 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.21.0"
+version = "1.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b672338555252d43fd2240c714dc444b8c6fb0a5c5335e65a07bba7742735ddb"
+checksum = "a68d3c8f01c0cfa54a75291d83601161799e4a89a39e0929f4b0354d88757a37"
 dependencies = [
+ "getrandom 0.4.1",
  "js-sys",
  "wasm-bindgen",
 ]

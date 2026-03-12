@@ -10,7 +10,7 @@ use std::{
 use tokio::sync::mpsc as tokio_chan;
 
 use crate::{fs_utils, fs_watcher, song_metadata::SongMetadata};
-use foksalcommon::net::{request::DbSubTarget, response::EventNotif};
+use libfoksalcommon::net::{request::DbSubTarget, response::EventNotif};
 
 type Table = BTreeMap<PathBuf, SongMetadata>;
 

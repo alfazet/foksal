@@ -3,7 +3,7 @@ use audioadapter_buffers::direct::InterleavedSlice;
 use cpal::Sample;
 use rubato::{Fft, FixedSync, Indexing, Resampler};
 
-use foksalcommon::CommonSample;
+use libfoksalcommon::CommonSample;
 
 const CHUNK_LEN: usize = 1024;
 

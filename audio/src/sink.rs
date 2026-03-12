@@ -8,7 +8,7 @@ use tokio::sync::{broadcast, mpsc as tokio_chan, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
 
 use crate::{Volume, device::Device, resampler::ResamplerWrapper};
-use foksalcommon::{
+use libfoksalcommon::{
     AUDIO_BUF_LEN, ArchivedAudioChunk, AudioSpec, CommonSample,
     net::request::{FileRequest, RawFileRequest},
 };

@@ -2,6 +2,8 @@
 name = "foksal-proxy"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
@@ -20,5 +22,5 @@ toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-foksalaudio = { workspace = true }
-foksalcommon = { workspace = true }
+libfoksalaudio = { workspace = true }
+libfoksalcommon = { workspace = true }

@@ -3,7 +3,7 @@ use regex::Regex;
 use unidecode::unidecode;
 
 use crate::tag::TagKey;
-use foksalcommon::RawFilter;
+use libfoksalcommon::RawFilter;
 
 #[derive(Debug)]
 pub struct ParsedFilter {

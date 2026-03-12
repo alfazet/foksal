@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use tracing::{info, warn};
 
-use foksalcommon::config::*;
+use libfoksalcommon::config::*;
 
 #[derive(Parser)]
 pub struct ProxyArgs {

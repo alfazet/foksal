@@ -1,18 +1,18 @@
 use anyhow::{Result, anyhow};
 use crossbeam_channel as cbeam_chan;
-use foksalaudio::{
+use futures_util::{SinkExt, StreamExt};
+use libfoksalaudio::{
     player_controller,
     request::{PlayerRequest, PlayerRequestKind},
     sink::{self, SinkError},
 };
-use foksalcommon::net::{
+use libfoksalcommon::net::{
     request::{
         FileRequest, LocalRequest, LocalRequestKind, RawPlayerRequest, RemoteRequest,
         SubscribeArgs, UnsubscribeArgs,
     },
     response::{EventNotif, RemoteResponse, RemoteResponseInner, Response},
 };
-use futures_util::{SinkExt, StreamExt};
 use std::{
     collections::{HashMap, VecDeque},
     net::SocketAddr,

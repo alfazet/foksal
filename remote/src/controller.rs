@@ -12,11 +12,11 @@ use tokio_tungstenite::tungstenite::{
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
-use foksalcommon::net::{
+use libfoksalcommon::net::{
     request::{FileRequest, RawDbRequest, RemoteRequest, SubscribeArgs, UnsubscribeArgs},
     response::{EventNotif, RemoteResponse, RemoteResponseInner, RemoteResponseKind, Response},
 };
-use foksaldb::{
+use libfoksaldb::{
     db_controller,
     request::{DbRequest, DbRequestKind},
 };

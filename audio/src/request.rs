@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use tokio::sync::oneshot;
 
 use crate::core::Player;
-use foksalcommon::net::{
+use libfoksalcommon::net::{
     request::{
         PlayerSubTarget, RawAddAndPlayArgs, RawAddToQueueArgs, RawPlayArgs, RawPlayerRequest,
         RawQueueMoveArgs, RawRemoveFromQueueArgs, RawSeekArgs, RawVolumeArgs, SubscribeArgs,

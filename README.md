@@ -1,3 +1,3 @@
 # Foksal
 
-A remote music player
+A remote music player.

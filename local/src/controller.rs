@@ -1,13 +1,13 @@
 use anyhow::{Result, anyhow};
 use crossbeam_channel as cbeam_chan;
-use foksalcommon::net::{
+use futures_util::{SinkExt, StreamExt};
+use libfoksalcommon::net::{
     request::{
         LocalRequest, LocalRequestKind, RawDbRequest, RawPlayerRequest, SubscribeArgs,
         UnsubscribeArgs,
     },
     response::{EventNotif, Response},
 };
-use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -22,12 +22,12 @@ use tokio_util::sync::CancellationToken;
 use tracing::error;
 
 use crate::config::ParsedLocalConfig;
-use foksalaudio::{
+use libfoksalaudio::{
     player_controller,
     request::{PlayerRequest, PlayerRequestKind},
     sink::{self, SinkError},
 };
-use foksaldb::{
+use libfoksaldb::{
     db_controller,
     request::{DbRequest, DbRequestKind},
 };
