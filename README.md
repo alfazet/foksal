@@ -37,3 +37,7 @@ If the config file isn't there, it will be generated based on the default config
 - `remote_port` - The port the remote instance is listening on.
 - `local_port` - The port for clients to connect to.
 - `audio_backend` and `log_file` - Same meaning as in local config.
+
+## Clients
+Foksal isn't very useful all by itself, you will need an external client to control it.
+For now, only a basic CLI-based client is available: `cargo install foksal-ctl`.
