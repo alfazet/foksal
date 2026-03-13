@@ -8,7 +8,8 @@ Minimum supported Rust version (MSRV): 1.90.
 
 ## Usage
 Quite simple, although it depends on your setup.
-Below, `music_root` denotes the path to the root directory of your music collection.
+
+In the descriptions below, `music_root` denotes the path to the root directory of your music collection.
 
 ### Run locally
 If your music collection is stored locally, run `foksal-local -m=<music_root>`.
@@ -18,6 +19,8 @@ Set up a remote foksal instance by running `foksal-remote -m=<music_root>` on th
 Then, on your local machine connect to the remote instance with `foksal-proxy --remote-addr=<ip_address>`.
 
 To see all available options for a given binary, run it with the `--help` flag.
+
+> You will most likely want foksal to start at boot and run as a background process.
 
 ## Configuration
 Foksal (in all three versions) reads its configuration from a TOML config file, by default `~/.config/foksal/foksal.toml` (change the path with the `-c` flag if needed).
@@ -40,4 +43,5 @@ If the config file isn't there, it will be generated based on the default config
 
 ## Clients
 Foksal isn't very useful all by itself, you will need an external client to control it.
+
 For now, only a basic CLI-based client is available: `cargo install foksal-ctl`.
