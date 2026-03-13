@@ -21,7 +21,7 @@ use libfoksalcommon::{
     net::request::{FileRequest, RawFileRequest},
 };
 
-const MAX_CACHE_SIZE: usize = 8; // ~1GB, assuming 5-minute songs at 48kHz stereo
+const MAX_CACHE_SIZE: usize = 4;
 const MAX_N_JOBS: usize = 8;
 
 struct DecoderRequest {

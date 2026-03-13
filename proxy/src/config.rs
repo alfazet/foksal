@@ -116,3 +116,90 @@ impl ParsedProxyConfig {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_args() -> ProxyArgs {
+        ProxyArgs {
+            config_file: None,
+            remote_addr: None,
+            remote_port: None,
+            local_port: None,
+            audio_backend: None,
+            log_file: None,
+        }
+    }
+
+    #[test]
+    fn parse_full_config() {
+        let toml = r#"
+            remote_addr = "12.34.56.78"
+            remote_port = 7312
+            local_port = 2137
+            audio_backend = "default"
+        "#;
+        let raw: RawProxyConfig = toml::from_str(toml).unwrap();
+        let parsed = ParsedProxyConfig::try_merge(raw, &empty_args()).unwrap();
+
+        assert_eq!(parsed.remote_addr, "12.34.56.78");
+        assert_eq!(parsed.remote_port, 7312);
+        assert_eq!(parsed.local_port, 2137);
+        assert_eq!(parsed.audio_backend, "default");
+    }
+
+    #[test]
+    fn parse_partial_config_uses_defaults() {
+        let toml = r#"
+            remote_addr = "12.34.56.78"
+        "#;
+        let raw: RawProxyConfig = toml::from_str(toml).unwrap();
+        let parsed = ParsedProxyConfig::try_merge(raw, &empty_args()).unwrap();
+
+        assert_eq!(parsed.remote_addr, "12.34.56.78");
+        assert_eq!(parsed.remote_port, DEFAULT_PORT);
+        assert_eq!(parsed.local_port, DEFAULT_PORT);
+        assert_eq!(parsed.audio_backend, DEFAULT_AUDIO_BACKEND);
+    }
+
+    #[test]
+    fn missing_remote_addr_returns_error() {
+        let raw: RawProxyConfig = toml::from_str("").unwrap();
+        let result = ParsedProxyConfig::try_merge(raw, &empty_args());
+
+        match result {
+            Ok(_) => panic!("expected an error when remote_addr is missing"),
+            Err(e) => assert!(
+                e.to_string().contains("remote"),
+                "error message should mention remote address, got: {}",
+                e
+            ),
+        }
+    }
+
+    #[test]
+    fn cli_args_override_toml_values() {
+        let toml = r#"
+            remote_addr = "12.34.56.78"
+            remote_port = 2137
+            local_port = 7312
+            audio_backend = "default"
+        "#;
+        let raw: RawProxyConfig = toml::from_str(toml).unwrap();
+        let args = ProxyArgs {
+            config_file: None,
+            remote_addr: Some("192.168.0.1".to_owned()),
+            remote_port: Some(1111),
+            local_port: Some(2222),
+            audio_backend: Some("pulse".to_owned()),
+            log_file: None,
+        };
+        let parsed = ParsedProxyConfig::try_merge(raw, &args).unwrap();
+
+        assert_eq!(parsed.remote_addr, "192.168.0.1");
+        assert_eq!(parsed.remote_port, 1111);
+        assert_eq!(parsed.local_port, 2222);
+        assert_eq!(parsed.audio_backend, "pulse");
+    }
+}

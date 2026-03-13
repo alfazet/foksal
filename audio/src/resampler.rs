@@ -60,3 +60,65 @@ impl ResamplerWrapper {
         Ok(&self.out_buffer[..n_channels * resampled_frames])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn input_len_scales_with_channels() {
+        let mono = ResamplerWrapper::try_new(44100, 48000, 1).unwrap();
+        let stereo = ResamplerWrapper::try_new(44100, 48000, 2).unwrap();
+        assert_eq!(stereo.input_len(), mono.input_len() * 2);
+    }
+
+    #[test]
+    fn resample_basic() {
+        let mut r = ResamplerWrapper::try_new(44100, 48000, 1).unwrap();
+        let input = vec![0.0f32; r.input_len()];
+        // the first chunk is consumed as a "warm-up"
+        let _ = r.resample(&input).unwrap();
+        let out = r.resample(&input).unwrap();
+        assert!(!out.is_empty());
+    }
+
+    #[test]
+    fn resample_stereo() {
+        let mut r = ResamplerWrapper::try_new(44100, 48000, 2).unwrap();
+        let input = vec![0.0f32; r.input_len()];
+        let _ = r.resample(&input).unwrap();
+        let out = r.resample(&input).unwrap();
+        assert!(!out.is_empty());
+        assert_eq!(out.len() % 2, 0);
+    }
+
+    #[test]
+    fn resample_partial_input() {
+        let mut r = ResamplerWrapper::try_new(44100, 48000, 1).unwrap();
+        let short_input = vec![0.0f32; r.input_len() / 2];
+        let out = r.resample(&short_input);
+        assert!(out.is_ok());
+    }
+
+    #[test]
+    fn resample_multiple_chunks() {
+        let mut r = ResamplerWrapper::try_new(44100, 48000, 1).unwrap();
+        let warmup = vec![0.0f32; r.input_len()];
+        let _ = r.resample(&warmup).unwrap();
+        for _ in 0..4 {
+            let input = vec![0.5f32; r.input_len()];
+            let out = r.resample(&input);
+            assert!(out.is_ok());
+            assert!(!out.unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn resample_silence_outputs_near_silence() {
+        let mut r = ResamplerWrapper::try_new(44100, 48000, 1).unwrap();
+        let input = vec![0.0f32; r.input_len()];
+        let out = r.resample(&input).unwrap();
+        let max_abs = out.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+        assert!(max_abs < 1e-6,);
+    }
+}

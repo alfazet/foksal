@@ -1,9 +1,11 @@
 [package]
 name = "libfoksalcommon"
+description = "foksal common library"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }

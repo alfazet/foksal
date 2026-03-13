@@ -10,6 +10,7 @@ keywords = ["music", "player", "remote"]
 license = "MIT"
 readme = "README.md"
 repository = "https://codeberg.org/alfazet/foksal"
+rust-version = "1.90"
 
 [workspace.dependencies]
 anyhow = "1.0"

@@ -1,9 +1,11 @@
 [package]
 name = "libfoksalclient"
+description = "a library to create foksal clients"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 base64 = { workspace = true }

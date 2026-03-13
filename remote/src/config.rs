@@ -111,3 +111,80 @@ impl ParsedRemoteConfig {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_args() -> RemoteArgs {
+        RemoteArgs {
+            config_file: None,
+            port: None,
+            music_root: None,
+            log_file: None,
+        }
+    }
+
+    #[test]
+    fn parse_full_config() {
+        let toml = r#"
+            port = 2137
+            music_root = "/music"
+            allowed_exts = ["mp3", "wav"]
+            ignore_globset = ["*.tmp", ".*"]
+        "#;
+        let raw: RawRemoteConfig = toml::from_str(toml).unwrap();
+        let parsed = ParsedRemoteConfig::try_merge(raw, &empty_args()).unwrap();
+
+        assert_eq!(parsed.port, 2137);
+        assert_eq!(parsed.music_root, PathBuf::from("/music"));
+        assert_eq!(parsed.allowed_exts, vec!["mp3", "wav"]);
+        assert_eq!(parsed.ignore_globset.len(), 2);
+        assert_eq!(parsed.ignore_globset[0].glob(), "*.tmp");
+        assert_eq!(parsed.ignore_globset[1].glob(), ".*");
+    }
+
+    #[test]
+    fn parse_partial_config_uses_defaults() {
+        let toml = r#"
+            port = 2137
+        "#;
+        let raw: RawRemoteConfig = toml::from_str(toml).unwrap();
+        let parsed = ParsedRemoteConfig::try_merge(raw, &empty_args()).unwrap();
+
+        assert_eq!(parsed.port, 2137);
+        assert_eq!(parsed.music_root, *DEFAULT_MUSIC_ROOT);
+        assert_eq!(parsed.allowed_exts, DEFAULT_ALLOWED_EXTS.to_vec());
+        assert_eq!(parsed.ignore_globset.len(), DEFAULT_IGNORE_GLOBSET.len());
+    }
+
+    #[test]
+    fn parse_empty_config_uses_all_defaults() {
+        let raw: RawRemoteConfig = toml::from_str("").unwrap();
+        let parsed = ParsedRemoteConfig::try_merge(raw, &empty_args()).unwrap();
+
+        assert_eq!(parsed.port, DEFAULT_PORT);
+        assert_eq!(parsed.music_root, *DEFAULT_MUSIC_ROOT);
+        assert_eq!(parsed.allowed_exts, DEFAULT_ALLOWED_EXTS.to_vec());
+        assert!(parsed.ignore_globset.is_empty());
+    }
+
+    #[test]
+    fn cli_args_override_toml_values() {
+        let toml = r#"
+            port = 2137
+            music_root = "/music"
+        "#;
+        let raw: RawRemoteConfig = toml::from_str(toml).unwrap();
+        let args = RemoteArgs {
+            config_file: None,
+            port: Some(7312),
+            music_root: Some(PathBuf::from("/other")),
+            log_file: None,
+        };
+        let parsed = ParsedRemoteConfig::try_merge(raw, &args).unwrap();
+
+        assert_eq!(parsed.port, 7312);
+        assert_eq!(parsed.music_root, PathBuf::from("/other"));
+    }
+}

@@ -40,7 +40,7 @@ use crate::config::ParsedProxyConfig;
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type ClientsMap = HashMap<SocketAddr, tokio_chan::UnboundedSender<RemoteResponseInner>>;
 
-const PING_TIMEOUT: u64 = 10; // in seconds
+const TIMEOUT: u64 = 10; // in seconds
 
 async fn handle_client(
     tcp_stream: TcpStream,
@@ -180,7 +180,7 @@ async fn run(
     // task to ping the remote
     tokio::spawn(async move {
         loop {
-            time::sleep(Duration::from_secs(PING_TIMEOUT)).await;
+            time::sleep(Duration::from_secs(TIMEOUT)).await;
             let _ = tx_ping.send(());
         }
     });
@@ -233,7 +233,7 @@ async fn run(
                         _ => (),
                     }
                 }
-                _ = time::sleep(Duration::from_secs(2 * PING_TIMEOUT)) => {
+                _ = time::sleep(Duration::from_secs(2 * TIMEOUT)) => {
                     warn!("connection to remote instance timed out");
                     c_token_clone.cancel();
                 }
@@ -303,8 +303,12 @@ pub fn spawn(
 }
 
 pub async fn connect_to_remote(host: impl AsRef<str>, port: u16) -> Result<WsStream> {
-    let (ws_stream, _) =
-        tokio_tungstenite::connect_async(format!("ws://{}:{}", host.as_ref(), port)).await?;
+    let (ws_stream, _) = time::timeout(
+        Duration::from_secs(TIMEOUT),
+        tokio_tungstenite::connect_async(format!("ws://{}:{}", host.as_ref(), port)),
+    )
+    .await
+    .map_err(|_| anyhow!("attempt to connect to {}:{} timed out", host.as_ref(), port))??;
 
     Ok(ws_stream)
 }
