@@ -114,7 +114,7 @@ async fn run(
                         player.next();
                     }
                     SinkResponse::StateChanged(state) => {
-                        player.notify_sink_state(state);
+                        player.notify_playback_state(state);
                     }
                     SinkResponse::VolumeChanged(volume) => {
                         player.notify_volume(volume);

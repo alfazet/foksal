@@ -1,20 +1,29 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
-use serde_json::{Value, json};
-use std::{collections::HashMap, net::TcpStream};
-use tokio_tungstenite::tungstenite::{Message as WsMessage, WebSocket, stream::MaybeTlsStream};
+use lazy_static::lazy_static;
+use serde_json::Value;
+use std::collections::HashMap;
+
+use libfoksalclient::{
+    client::FoksalClient,
+    model::{PlaybackState, PlayerState, QueueMode},
+};
 
 #[derive(Subcommand)]
 enum Command {
-    /// add songs to the end of the playback queue (comma-separated paths, can be relative)
-    Add { songs: String },
-    /// remove a song from the queue by position (0-indexed)
-    Remove { pos: usize },
+    /// add songs to the end of the playback queue (paths can be relative)
+    Add { uris: Vec<String> },
     /// start playing the song at a given queue position
     Play {
         /// queue position (0-indexed)
         pos: usize,
     },
+    /// add songs to the end of the playback queue and play them immediately
+    AddPlay { uris: Vec<String> },
+    /// move a song from one queue position to another
+    Move { from: usize, to: usize },
+    /// remove a song from the queue by position (0-indexed)
+    Remove { pos: usize },
     /// pause playback
     Pause,
     /// resume playback
@@ -43,11 +52,11 @@ enum Command {
     State,
 }
 
-/// foksal-ctl – cli foksal controller
+/// foksal-ctl – a basic command line controller for foksal
 #[derive(Parser)]
 #[command(name = "foksal-ctl", version, about, infer_subcommands = true)]
 struct Cli {
-    /// port that the foksal instance is listening on
+    /// port that the foksal instance (local or proxy) is listening on
     #[arg(short = 'p', long, default_value_t = 2137, global = true)]
     port: u16,
 
@@ -55,173 +64,184 @@ struct Cli {
     command: Command,
 }
 
-fn build_request(command: &Command) -> Value {
-    match command {
-        Command::Add { songs } => {
-            let uris: Vec<&str> = songs.split(',').map(|s| s.trim()).collect();
-            json!({ "kind": "add_to_queue", "uris": uris })
-        }
-        Command::Remove { pos } => json!({ "kind": "remove_from_queue", "pos": pos }),
-        Command::Play { pos } => json!({ "kind": "play", "pos": pos }),
-        Command::Pause => json!({ "kind": "pause" }),
-        Command::Resume => json!({ "kind": "resume" }),
-        Command::Toggle => json!({ "kind": "toggle" }),
-        Command::Stop => json!({ "kind": "stop" }),
-        Command::Next => json!({ "kind": "next" }),
-        Command::Prev => json!({ "kind": "prev" }),
-        Command::Sequential => json!({ "kind": "queue_seq" }),
-        Command::Random => json!({ "kind": "queue_random" }),
-        Command::Loop => json!({ "kind": "queue_loop" }),
-        Command::Volume { delta } => json!({ "kind": "volume", "delta": delta }),
-        Command::Seek { seconds } => json!({ "kind": "seek", "seconds": seconds }),
-        Command::Clear => json!({ "kind": "queue_clear" }),
-        Command::State => json!({ "kind": "state" }),
-    }
+lazy_static! {
+    static ref TAGS: [String; 4] = [
+        "artist".into(),
+        "album".into(),
+        "tracktitle".into(),
+        "duration".into()
+    ];
 }
 
-fn send_request(ws: &mut WebSocket<MaybeTlsStream<TcpStream>>, request: &Value) -> Result<Value> {
-    let msg = WsMessage::Binary(serde_json::to_vec(request)?.into());
-    ws.send(msg)?;
-    let response = ws.read()?;
-    let body = match &response {
-        WsMessage::Binary(data) => data.to_vec(),
-        _ => bail!("unexpected response type"),
+const N_A: &str = "[n/a]";
+
+fn playback_state_str(state: PlaybackState) -> String {
+    let s = match state {
+        PlaybackState::Playing => "playing",
+        PlaybackState::Paused => "paused",
+        PlaybackState::Stopped => "stopped",
     };
 
-    Ok(serde_json::from_slice(&body)?)
+    format!("state:\t{}", s)
 }
 
-fn format_song(uri: impl AsRef<str>, metadata: Option<&Value>) -> String {
-    match metadata {
-        Some(metadata) => {
-            let artist = metadata
-                .get("artist")
-                .and_then(|v| v.as_str())
-                .unwrap_or("[unknown]");
-            let album = metadata
-                .get("album")
-                .and_then(|v| v.as_str())
-                .unwrap_or("[unknown]");
-            let title = metadata
-                .get("tracktitle")
-                .and_then(|v| v.as_str())
-                .unwrap_or("[unknown]");
-            format!("{} - {} - {}", artist, album, title)
-        }
-        None => uri.as_ref().to_string(),
+fn format_song(data: &HashMap<String, Value>) -> String {
+    let values: Vec<_> = TAGS
+        .iter()
+        .map(|tag| {
+            data.get(tag.as_str())
+                .and_then(|v| {
+                    if let Some(s) = v.as_str() {
+                        Some(s.to_owned())
+                    } else {
+                        v.as_u64().map(|s| s.to_string())
+                    }
+                })
+                .unwrap_or(N_A.into())
+        })
+        .collect();
+
+    let mut s = String::new();
+    for value in values {
+        s.push_str(value.as_str());
+        s.push('\t');
     }
+    s.pop();
+
+    s
 }
 
-fn fetch_metadata(
-    ws: &mut WebSocket<MaybeTlsStream<TcpStream>>,
-    uris: &[&str],
-) -> Result<HashMap<String, Value>> {
-    let req = json!({
-        "kind": "metadata",
-        "uris": uris,
-        "tags": ["artist", "tracktitle", "album", "duration"]
-    });
+fn queue_mode_str(mode: QueueMode) -> String {
+    let s = match mode {
+        QueueMode::Sequential => "sequential",
+        QueueMode::Random => "random",
+        QueueMode::Loop => "loop",
+    };
 
-    let resp = send_request(ws, &req)?;
-    let mut map = HashMap::new();
-    if let Some(arr) = resp.get("metadata").and_then(|v| v.as_array()) {
-        for (i, meta) in arr.iter().enumerate() {
-            if !meta.is_null()
-                && let Some(&uri) = uris.get(i)
-            {
-                map.insert(uri.to_string(), meta.clone());
-            }
+    format!("queue_mode:\t{}", s)
+}
+
+fn queue_pos_str(pos: Option<usize>) -> String {
+    let s = match pos {
+        Some(pos) => pos.to_string(),
+        None => N_A.into(),
+    };
+
+    format!("queue_pos:\t{}", s)
+}
+
+fn queue_str(data: &HashMap<&String, &Option<HashMap<String, Value>>>, queue: &[String]) -> String {
+    let mut s = String::new();
+    for (i, uri) in queue.iter().enumerate() {
+        s.push_str(&format!("\n{}\t", i));
+        match *data.get(&uri).unwrap_or(&&Default::default()) {
+            Some(song_data) => s.push_str(&format_song(song_data)),
+            None => s.push_str(N_A),
         }
     }
 
-    Ok(map)
+    s
 }
 
-fn print_state(response: &Value, metadata: &HashMap<String, Value>) {
-    let uri = response.get("current_song").and_then(|v| v.as_str());
-    let (song, duration) = match uri {
+fn print_info(state: PlayerState, songs_data: Vec<Option<HashMap<String, Value>>>) {
+    let data_map: HashMap<_, _> = state.queue.iter().zip(songs_data.iter()).collect();
+    let current_song_str = match state.current_song {
         Some(uri) => {
-            let song_meta = metadata.get(uri);
-            let song = format_song(uri, song_meta);
-            let duration = song_meta
-                .and_then(|m| m.get("duration"))
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
+            let data = match data_map.get(&uri) {
+                Some(Some(data)) => data,
+                _ => &Default::default(),
+            };
 
-            (song, duration)
+            format_song(data)
         }
-        None => ("[none]".into(), 0),
+        None => N_A.into(),
     };
-    let state = response
-        .get("sink_state")
-        .and_then(|v| v.as_str())
-        .unwrap_or("[unknown]");
-    let mode = response
-        .get("queue_mode")
-        .and_then(|v| v.as_str())
-        .unwrap_or("[unknown]");
-    let volume = response
-        .get("volume")
-        .and_then(|v| v.as_i64())
-        .map(|v| v.to_string())
-        .unwrap_or_else(|| "??".into());
-    let elapsed = response
-        .get("elapsed")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-    let (e_mins, d_mins) = (elapsed / 60, duration / 60);
-    let (e_secs, d_secs) = (elapsed % 60, duration % 60);
+    let current_song_str = format!("current_song:\t{}", current_song_str);
+    let elapsed_str = format!("elapsed:\t{}", state.elapsed);
+    let volume_str = format!("volume:\t{}", state.volume);
+    let state_str = playback_state_str(state.playback_state);
+    let queue_mode_str = queue_mode_str(state.queue_mode);
+    let queue_pos_str = queue_pos_str(state.queue_pos);
+    let queue_str = queue_str(&data_map, &state.queue);
 
-    println!("state: {}", state);
-    println!("mode: {}", mode);
-    println!("song: {}", song);
-    println!("elapsed: {}:{:02}/{}:{:02}", e_mins, e_secs, d_mins, d_secs);
-    println!("volume: {}", volume);
+    println!("{}", current_song_str);
+    println!("{}", elapsed_str);
+    println!("{}", volume_str);
+    println!("{}", state_str);
+    println!("{}", queue_mode_str);
+    println!("{}", queue_pos_str);
+    println!("{}", queue_str);
 }
 
-fn print_queue(response: &Value, metadata: &HashMap<String, Value>) {
-    let queue_pos = response.get("queue_pos").and_then(|v| v.as_i64());
-    if let Some(list) = response.get("queue").and_then(|v| v.as_array()) {
-        println!("queue:");
-        for (i, uri) in list.iter().enumerate() {
-            let uri = uri.as_str().unwrap_or_default();
-            let display = format_song(uri, metadata.get(uri));
-            if queue_pos.is_some_and(|p| p as usize == i) {
-                println!("{}*: {}", i, display);
-            } else {
-                println!("{}: {}", i, display);
-            }
+async fn send_request(client: &mut FoksalClient, command: Command) -> Result<()> {
+    match command {
+        Command::Add { uris } => {
+            client.add_to_queue(uris, None).await?;
         }
-    }
-}
-
-fn main() -> Result<()> {
-    let cli = Cli::parse();
-    let url = format!("ws://127.0.0.1:{}", cli.port);
-    let (mut ws, _) = tokio_tungstenite::tungstenite::connect(&url)?;
-    let _ = ws.read()?;
-
-    let request = build_request(&cli.command);
-    let response = send_request(&mut ws, &request)?;
-    let ok = response
-        .get("ok")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    if !ok {
-        let reason = response.get("reason").and_then(|v| v.as_str()).unwrap();
-        bail!("{}", reason);
-    }
-
-    if let Command::State = cli.command {
-        let uris: Vec<_> = response
-            .get("queue")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
-            .unwrap_or_default();
-        let metadata = fetch_metadata(&mut ws, &uris)?;
-        print_state(&response, &metadata);
-        print_queue(&response, &metadata);
-    }
+        Command::Play { pos } => {
+            client.play(pos).await?;
+        }
+        Command::AddPlay { uris } => {
+            client.add_and_play(uris).await?;
+        }
+        Command::Move { from, to } => {
+            client.queue_move(from, to).await?;
+        }
+        Command::Remove { pos } => {
+            client.remove_from_queue(pos).await?;
+        }
+        Command::Pause => {
+            client.pause().await?;
+        }
+        Command::Resume => {
+            client.resume().await?;
+        }
+        Command::Toggle => {
+            client.toggle().await?;
+        }
+        Command::Stop => {
+            client.stop().await?;
+        }
+        Command::Next => {
+            client.next().await?;
+        }
+        Command::Prev => {
+            client.prev().await?;
+        }
+        Command::Sequential => {
+            client.queue_seq().await?;
+        }
+        Command::Random => {
+            client.queue_random().await?;
+        }
+        Command::Loop => {
+            client.queue_loop().await?;
+        }
+        Command::Volume { delta } => {
+            client.volume(delta).await?;
+        }
+        Command::Seek { seconds } => {
+            client.seek(seconds).await?;
+        }
+        Command::Clear => {
+            client.queue_clear().await?;
+        }
+        Command::State => {
+            let state = client.state().await?;
+            let songs_data = client.metadata(state.queue.clone(), TAGS.to_vec()).await?;
+            print_info(state, songs_data);
+        }
+    };
 
     Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let cli = Cli::parse();
+    let (mut client, _) = FoksalClient::connect("localhost", cli.port).await?;
+    let res = send_request(&mut client, cli.command).await;
+    client.close().await?;
+
+    res
 }

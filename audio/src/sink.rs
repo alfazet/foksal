@@ -25,7 +25,7 @@ pub enum SinkError {
 }
 
 pub enum SinkRequest {
-    GetState(oneshot::Sender<SinkState>),
+    GetState(oneshot::Sender<PlaybackState>),
     GetCurSong(oneshot::Sender<Option<PathBuf>>),
     GetVolume(oneshot::Sender<Volume>),
     GetElapsed(oneshot::Sender<u64>),
@@ -40,7 +40,7 @@ pub enum SinkRequest {
 
 pub enum SinkResponse {
     SongOver,
-    StateChanged(SinkState),
+    StateChanged(PlaybackState),
     VolumeChanged(Volume),
     Elapsed(u64),
 }
@@ -64,7 +64,7 @@ struct PlaybackData {
 
 #[derive(Clone, Copy, Debug, Default, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SinkState {
+pub enum PlaybackState {
     #[default]
     Stopped,
     Playing,
@@ -73,7 +73,7 @@ pub enum SinkState {
 
 struct Sink {
     device: Device,
-    state: SinkState,
+    state: PlaybackState,
     data: PlaybackData,
     volume: Volume,
     tx_response: tokio_chan::UnboundedSender<SinkResponse>,
@@ -111,9 +111,9 @@ impl Sink {
         }
     }
 
-    fn change_state(&mut self, new_state: SinkState) {
+    fn change_state(&mut self, new_state: PlaybackState) {
         self.state = new_state;
-        if matches!(new_state, SinkState::Stopped) {
+        if matches!(new_state, PlaybackState::Stopped) {
             self.data = Default::default();
         }
         let _ = self.tx_response.send(SinkResponse::StateChanged(new_state));
@@ -121,14 +121,14 @@ impl Sink {
 
     fn err_and_stop(&mut self, err: SinkError) {
         let _ = self.tx_error.send(err);
-        self.change_state(SinkState::Stopped);
+        self.change_state(PlaybackState::Stopped);
     }
 
     fn check_song_end(&mut self) {
         let samples = &self.data.samples;
         if samples.ptr >= samples.inner.len() && samples.got_all {
             let _ = self.tx_response.send(SinkResponse::SongOver);
-            self.change_state(SinkState::Stopped);
+            self.change_state(PlaybackState::Stopped);
         }
     }
 
@@ -191,26 +191,26 @@ impl Sink {
                 self.data = Default::default();
                 self.data.uri.replace(uri);
                 self.data.samples.clear();
-                self.change_state(SinkState::Playing);
+                self.change_state(PlaybackState::Playing);
             }
             SinkRequest::Pause => {
-                if let SinkState::Playing = self.state {
-                    self.change_state(SinkState::Paused);
+                if let PlaybackState::Playing = self.state {
+                    self.change_state(PlaybackState::Paused);
                 }
             }
             SinkRequest::Resume => {
-                if let SinkState::Paused = self.state {
-                    self.change_state(SinkState::Playing);
+                if let PlaybackState::Paused = self.state {
+                    self.change_state(PlaybackState::Playing);
                 }
             }
             SinkRequest::Toggle => {
                 match self.state {
-                    SinkState::Paused => self.change_state(SinkState::Playing),
-                    SinkState::Playing => self.change_state(SinkState::Paused),
+                    PlaybackState::Paused => self.change_state(PlaybackState::Playing),
+                    PlaybackState::Playing => self.change_state(PlaybackState::Paused),
                     _ => (),
                 };
             }
-            SinkRequest::Stop => self.change_state(SinkState::Stopped),
+            SinkRequest::Stop => self.change_state(PlaybackState::Stopped),
         }
     }
 
@@ -268,7 +268,7 @@ impl Sink {
     ) {
         loop {
             let request = match self.state {
-                SinkState::Playing => match rx_sink_request.try_recv() {
+                PlaybackState::Playing => match rx_sink_request.try_recv() {
                     Ok(request) => Some(request),
                     Err(cbeam_chan::TryRecvError::Disconnected) => break,
                     _ => None,
@@ -305,7 +305,7 @@ impl Sink {
                     None => self.request_more_samples(uri, &tx_file_request),
                 }
             }
-            if let SinkState::Playing = self.state
+            if let PlaybackState::Playing = self.state
                 && let Some(ref mut resampler) = self.data.resampler
             {
                 if self.data.samples.ptr >= self.data.samples.inner.len() {

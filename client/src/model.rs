@@ -55,7 +55,7 @@ pub struct PlayerState {
     pub queue_pos: Option<usize>,
     pub queue_mode: QueueMode,
     pub queue: Vec<String>,
-    pub sink_state: PlaybackState,
+    pub playback_state: PlaybackState,
     pub volume: usize,
     /// In seconds.
     pub elapsed: u64,

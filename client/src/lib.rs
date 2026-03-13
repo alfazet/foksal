@@ -1,6 +1,6 @@
 //! # libfoksal
 //!
-//! A client library for [foksal](https://github.com/alfazet/foksal).
+//! A client library for [foksal](https://codeberg.org/alfazet/foksal).
 //!
 //! ## Example
 //!
@@ -8,7 +8,7 @@
 //! # async fn example() -> Result<(), libfoksalclient::error::FoksalError> {
 //! use libfoksalclient::{client::FoksalClient, error::FoksalError, model::SubscriptionTarget};
 //!
-//! let (client, mut events) = FoksalClient::connect("localhost", 2137).await?;
+//! let (mut client, mut events) = FoksalClient::connect("localhost", 2137).await?;
 //!
 //! // subscribe to receive notifications on changes to foksal's state
 //! client.subscribe(SubscriptionTarget::Queue).await?;

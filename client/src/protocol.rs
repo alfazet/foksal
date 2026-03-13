@@ -114,7 +114,7 @@ pub(crate) struct RawResponse {
     #[serde(default)]
     pub queue: Option<Vec<String>>,
     #[serde(default)]
-    pub sink_state: Option<PlaybackState>,
+    pub playback_state: Option<PlaybackState>,
     #[serde(default)]
     pub volume: Option<usize>,
     #[serde(default)]
@@ -146,7 +146,7 @@ impl RawResponse {
             queue_pos: self.queue_pos,
             queue_mode: self.queue_mode?,
             queue: self.queue?,
-            sink_state: self.sink_state?,
+            playback_state: self.playback_state?,
             volume: self.volume?,
             elapsed: self.elapsed?,
         })
@@ -305,7 +305,7 @@ mod tests {
             "queue_pos": 0,
             "queue_mode": "random",
             "queue": ["Artist/Album/01 Song.flac"],
-            "sink_state": "playing",
+            "playback_state": "playing",
             "volume": 80,
             "elapsed": 123
         }"#;
@@ -315,7 +315,7 @@ mod tests {
                 let state = r.into_player_state().unwrap();
                 assert_eq!(state.volume, 80);
                 assert_eq!(state.queue_mode, QueueMode::Random);
-                assert_eq!(state.sink_state, PlaybackState::Playing);
+                assert_eq!(state.playback_state, PlaybackState::Playing);
             }
             other => panic!("expected Response, got {other:?}"),
         }

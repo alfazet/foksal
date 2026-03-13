@@ -11,7 +11,7 @@ use tokio::sync::{mpsc as tokio_chan, oneshot};
 use crate::{
     Volume,
     queue::{Queue, QueueMode},
-    sink::{SinkRequest, SinkState},
+    sink::{PlaybackState, SinkRequest},
 };
 use libfoksalcommon::net::{request::PlayerSubTarget, response::EventNotif};
 
@@ -25,7 +25,7 @@ pub enum PlayerEvent {
     QueuePos { pos: Option<usize> },
     QueueMode { mode: QueueMode },
     CurrentSong { uri: PathBuf },
-    SinkState { state: SinkState },
+    PlaybackState { state: PlaybackState },
     Volume { volume: u8 },
     Elapsed { seconds: u64 },
 }
@@ -62,7 +62,7 @@ impl Player {
         &self.queue
     }
 
-    pub async fn sink_state(&self) -> SinkState {
+    pub async fn playback_state(&self) -> PlaybackState {
         let (tx, rx) = oneshot::channel();
         let _ = self.tx_sink_request.send(SinkRequest::GetState(tx));
         rx.await.unwrap_or_default()
@@ -218,8 +218,8 @@ impl Player {
         self.notify_subscribers(PlayerSubTarget::Queue, PlayerEvent::QueueContent { queue });
     }
 
-    pub fn notify_sink_state(&self, state: SinkState) {
-        self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::SinkState { state });
+    pub fn notify_playback_state(&self, state: PlaybackState) {
+        self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::PlaybackState { state });
     }
 
     pub fn notify_queue_mode(&self) {

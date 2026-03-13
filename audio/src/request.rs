@@ -178,7 +178,7 @@ impl Player {
     ///         "current/song",
     ///         "some/other/song"
     ///     ],
-    ///     "sink_state": "paused",
+    ///     "playback_state": "paused",
     ///     "volume": 80,
     ///     "elapsed": 123,
     /// }
@@ -186,7 +186,7 @@ impl Player {
     pub async fn req_state(&self) -> Response {
         let queue = self.queue();
         let cur_song = self.cur_song().await;
-        let sink_state = self.sink_state().await;
+        let playback_state = self.playback_state().await;
         let volume = self.volume().await;
         let elapsed = self.elapsed().await;
         Response::new_ok()
@@ -194,7 +194,7 @@ impl Player {
             .with_item("current_song", &cur_song)
             .with_item("queue_pos", &queue.pos())
             .with_item("queue_mode", &queue.mode())
-            .with_item("sink_state", &sink_state)
+            .with_item("playback_state", &playback_state)
             .with_item("volume", &volume)
             .with_item("elapsed", &elapsed)
     }
