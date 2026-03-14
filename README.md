@@ -3,13 +3,11 @@
 A remote music player. Perfect for those who enjoy owning their music.
 
 ## Installation
-Install from cargo with `cargo install foksal-{TYPE}` (where `TYPE` is `local`, `remote` or `proxy`) or download the source code and build foksal locally.
+Install from cargo with `cargo install foksal-{TYPE}` (where `TYPE` is one of `local`, `remote` or `proxy`, see below) or download the source code and build foksal locally.
 Minimum supported Rust version (MSRV): 1.90.
 
 ## Usage
-Quite simple, although it depends on your setup.
-
-In the descriptions below, `music_root` denotes the path to the root directory of your music collection.
+In the descriptions below, `music_root` denotes the path (relative or absolute) to the root directory of your music collection.
 
 ### Run locally
 If your music collection is stored locally, run `foksal-local -m=<music_root>`.
@@ -20,28 +18,48 @@ Then, on your local machine connect to the remote instance with `foksal-proxy --
 
 To see all available options for a given binary, run it with the `--help` flag.
 
-> You will most likely want foksal to start at boot and run as a background process.
+> You will most likely want foksal to start at boot and run as a background process (as a systemd unit, for example).
 
 ## Configuration
-Foksal (in all three versions) reads its configuration from a TOML config file, by default `~/.config/foksal/foksal.toml` (change the path with the `-c` flag if needed).
+Foksal reads its configuration from a TOML config file, by default `~/.config/foksal/foksal.toml` (change the path with the `-c` flag if needed).
 If the config file isn't there, it will be generated based on the default config and passed CLI arguments. All available options are listed below:
 
 ### Local options
-- `port` - The port for clients to connect to.
-- `music_root` - The root directory of your music collection.
-- `audio_backend` - The audio backend (alsa, pulse, pipewire, etc.), it's very likely you should keep it at `default`.
-- `log_file` - The location of foksal's log file.
+- `port` - The port for clients to connect to (default: `2137`).
+- `music_root` - The root directory of your music collection (default: foksal's working dir).
+- `audio_backend` - The audio backend (alsa, pulse, pipewire, etc.) (default: well, 1default` - it should work just fine).
+- `ignore_globset` - A list of Unix glob patterns that foksal will ignore when searching for music (default: empty).
+- `allowed_exts` - A list of extensions that foksal will treat as music files (default: `mp3`, `m4a` and `flac`).
 
 ### Remote options
-- `port`, `music_root` and `log_file` - Same meaning as in local config (`port` is the port that proxy instances should connect to).
+- `port`, `music_root`, `ignore_globset` and `allowed_exts` - Same meaning as in local config (`port` is the port that proxy instances should connect to, make sure it's accessible).
 
 ### Proxy options
 - `remote_addr` - The IP address of the remote foksal instance.
 - `remote_port` - The port the remote instance is listening on.
 - `local_port` - The port for clients to connect to.
-- `audio_backend` and `log_file` - Same meaning as in local config.
+- `audio_backend` - Same meaning as in local config.
+
+Keep in mind that all foksal binaries read the same config file by default (meaning that, as an example, you don't need two almost-duplicated config file for `local` and `proxy` - 
+if `proxy` reads a config key it doesn't need, it will just silently ignore it).
 
 ## Clients
 Foksal isn't very useful all by itself, you will need an external client to control it.
 
-For now, only a basic CLI-based client is available: `cargo install foksal-ctl`.
+For now, only a basic CLI-based client is available, install it with `cargo install foksal-ctl`. It's not very human-friendly, but can work well
+as part of a scripting pipeline (for instance, to display the current song on your statusbar).
+
+A GUI client is in the works...
+
+## Roadmap
+Currently planned features:
+- Data persistence between restarts.
+- Support for user-specific data (ratings, comments, ...).
+- Support for song lyrics.
+- Support for frequency spectrum visualization.
+
+## Contributing
+Want to contribute? Create an [issue](https://codeberg.org/alfazet/foksal/issues) on Codeberg (that's where foksal's development happens, the parallel GitHub repo is just a mirror).
+
+## Trivia
+Foksal (/ˈfɔk.sal/) is a [street](https://en.wikipedia.org/wiki/Foksal_Street) in my hometown. Also, it's no secret that software with foxes is the best.

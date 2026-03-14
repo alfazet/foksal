@@ -1,6 +1,6 @@
 [package]
 name = "foksal-ctl"
-description = "a basic CLI controller for foksal"
+description = "a basic cli client for foksal"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
