@@ -1,6 +1,7 @@
-//! # libfoksal
+//! # libfoksalclient
 //!
-//! A client library for [foksal](https://codeberg.org/alfazet/foksal).
+//! A client library for [foksal](https://codeberg.org/alfazet/foksal). Use it to build your own
+//! client(s).
 //!
 //! ## Example
 //!
@@ -28,6 +29,7 @@
 //! # }
 //! ```
 
+pub mod blocking;
 pub mod client;
 pub mod error;
 pub mod model;

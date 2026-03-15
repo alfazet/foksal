@@ -70,7 +70,7 @@ impl Response {
     }
 
     pub fn version() -> Self {
-        let version = format!("foksal v{}", env!("CARGO_PKG_VERSION"));
+        let version = format!("v{}", env!("CARGO_PKG_VERSION"));
         let json = JsonObject::from_iter([("version".into(), Value::String(version))]);
 
         Self(json)

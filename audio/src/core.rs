@@ -144,8 +144,12 @@ impl Player {
         self.next();
     }
 
-    pub fn change_volume(&self, delta: i8) {
+    pub fn volume_change(&self, delta: i8) {
         let _ = self.tx_sink_request.send(SinkRequest::VolChange(delta));
+    }
+
+    pub fn volume_set(&self, volume: u8) {
+        let _ = self.tx_sink_request.send(SinkRequest::VolSet(volume));
     }
 
     pub fn seek(&self, seconds: isize) {

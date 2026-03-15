@@ -1,12 +1,14 @@
 [package]
 name = "libfoksalclient"
-description = "a library to create foksal clients"
+description = "a client library for foksal"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+
+readme = "README.md"
 
 [dependencies]
 base64 = { workspace = true }

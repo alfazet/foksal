@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
+
+use crate::error::FoksalError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -61,6 +64,14 @@ pub struct PlayerState {
     pub elapsed: u64,
 }
 
+/// Valid types for tag values.
+#[derive(Debug, Clone)]
+pub enum TagValue {
+    Null,
+    String(String),
+    Number(i64),
+}
+
 /// Tag values and other file metadata of a song.
 ///
 /// Available keys:
@@ -85,24 +96,75 @@ pub struct PlayerState {
 ///
 /// All of the above have string values, with the exception of `duration` (number of seconds) and `filesize` (number of
 /// bytes).
-pub type SongMetadata = HashMap<String, serde_json::Value>;
+pub type SongMetadata = HashMap<String, TagValue>;
+pub(crate) type RawSongMetadata = HashMap<String, Value>;
 
 /// Group of URIs returned by the `select` request.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SelectGroup {
     /// URIs belonging to this group.
     pub uris: Vec<String>,
     /// Tag values common to this group (e.g. `{"albumartist": "ILLENIUM", "album": "Awake"}`).
+    pub tags: HashMap<String, TagValue>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct RawSelectGroup {
+    pub uris: Vec<String>,
     #[serde(flatten)]
-    pub tags: HashMap<String, serde_json::Value>,
+    pub tags: HashMap<String, Value>,
 }
 
 /// Group of unique values returned by the `unique` request.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UniqueGroup {
     /// Unique values of the requested tag within this group.
-    pub unique: Vec<String>,
+    pub unique: Vec<TagValue>,
     /// Values of the grouping tags.
+    pub tags: HashMap<String, TagValue>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct RawUniqueGroup {
+    pub unique: Vec<Value>,
     #[serde(flatten)]
-    pub tags: HashMap<String, serde_json::Value>,
+    pub tags: HashMap<String, Value>,
+}
+
+impl TryFrom<Value> for TagValue {
+    type Error = FoksalError;
+
+    fn try_from(value: Value) -> Result<Self, FoksalError> {
+        match value {
+            Value::Null => Ok(Self::Null),
+            Value::String(s) => Ok(Self::String(s)),
+            Value::Number(n) => Ok(Self::Number(n.as_i64().expect("numbers should fit in i64"))),
+            _ => Err(FoksalError::InvalidTagValue),
+        }
+    }
+}
+
+impl TagValue {
+    /// Returns unit if `self` is a `null`, or `None` otherwise.
+    pub fn as_null(&self) -> Option<()> {
+        if let Self::Null = self {
+            Some(())
+        } else {
+            None
+        }
+    }
+
+    /// Returns a str reference if `self` is a `String`, or `None` otherwise.
+    pub fn as_str(&self) -> Option<&str> {
+        if let Self::String(s) = self {
+            Some(s.as_str())
+        } else {
+            None
+        }
+    }
+
+    /// Returns an `i64` if `self` is a `Number`, or `None` otherwise.
+    pub fn as_i64(&self) -> Option<i64> {
+        if let Self::Number(n) = self {
+            Some(*n)
+        } else {
+            None
+        }
+    }
 }

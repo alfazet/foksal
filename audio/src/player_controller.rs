@@ -74,8 +74,11 @@ async fn run(
                         RawPlayerRequest::Play(raw_args) => {
                             handle_request_mut(&mut player, raw_args, |player, args| player.req_play(args))
                         }
-                        RawPlayerRequest::Volume(raw_args) => {
-                            handle_request(&player, raw_args, |player, args| player.req_volume(args))
+                        RawPlayerRequest::VolumeChange(raw_args) => {
+                            handle_request(&player, raw_args, |player, args| player.req_volume_change(args))
+                        }
+                        RawPlayerRequest::VolumeSet(raw_args) => {
+                            handle_request(&player, raw_args, |player, args| player.req_volume_set(args))
                         }
                         RawPlayerRequest::Seek(raw_args) => {
                             handle_request(&player, raw_args, |player, args| player.req_seek(args))

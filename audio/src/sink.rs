@@ -31,6 +31,7 @@ pub enum SinkRequest {
     GetElapsed(oneshot::Sender<u64>),
     Play(PathBuf),
     VolChange(i8),
+    VolSet(u8),
     Seek(isize),
     Stop,
     Pause,
@@ -179,6 +180,12 @@ impl Sink {
             }
             SinkRequest::VolChange(delta) => {
                 self.volume.change(delta);
+                let _ = self
+                    .tx_response
+                    .send(SinkResponse::VolumeChanged(self.volume));
+            }
+            SinkRequest::VolSet(volume) => {
+                self.volume.set(volume);
                 let _ = self
                     .tx_response
                     .send(SinkResponse::VolumeChanged(self.volume));
