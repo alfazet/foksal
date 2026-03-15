@@ -40,7 +40,7 @@ use crate::config::ParsedProxyConfig;
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type ClientsMap = HashMap<SocketAddr, tokio_chan::UnboundedSender<RemoteResponseInner>>;
 
-const TIMEOUT: u64 = 10; // in seconds
+const TIMEOUT: u64 = 5; // in seconds
 
 async fn handle_client(
     tcp_stream: TcpStream,

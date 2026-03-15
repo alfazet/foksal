@@ -6,8 +6,8 @@ use crate::core::Player;
 use libfoksalcommon::net::{
     request::{
         PlayerSubTarget, RawAddAndPlayArgs, RawAddToQueueArgs, RawPlayArgs, RawPlayerRequest,
-        RawQueueMoveArgs, RawRemoveFromQueueArgs, RawSeekArgs, RawVolumeArgs, SubscribeArgs,
-        UnsubscribeArgs,
+        RawQueueMoveArgs, RawRemoveFromQueueArgs, RawSeekArgs, RawVolumeChangeArgs,
+        RawVolumeSetArgs, SubscribeArgs, UnsubscribeArgs,
     },
     response::Response,
 };
@@ -36,8 +36,12 @@ pub struct ParsedAddAndPlayArgs {
     pub uris: Vec<PathBuf>,
 }
 
-pub struct ParsedVolumeArgs {
+pub struct ParsedVolumeChangeArgs {
     pub delta: i8,
+}
+
+pub struct ParsedVolumeSetArgs {
+    pub volume: u8,
 }
 
 pub struct ParsedSeekArgs {
@@ -65,7 +69,9 @@ impl ParsedPlayerRequestArgs for ParsedPlayArgs {}
 
 impl ParsedPlayerRequestArgs for ParsedAddAndPlayArgs {}
 
-impl ParsedPlayerRequestArgs for ParsedVolumeArgs {}
+impl ParsedPlayerRequestArgs for ParsedVolumeChangeArgs {}
+
+impl ParsedPlayerRequestArgs for ParsedVolumeSetArgs {}
 
 impl ParsedPlayerRequestArgs for ParsedSeekArgs {}
 
@@ -115,11 +121,19 @@ impl TryFrom<RawAddAndPlayArgs> for ParsedAddAndPlayArgs {
     }
 }
 
-impl TryFrom<RawVolumeArgs> for ParsedVolumeArgs {
+impl TryFrom<RawVolumeChangeArgs> for ParsedVolumeChangeArgs {
     type Error = anyhow::Error;
 
-    fn try_from(raw: RawVolumeArgs) -> Result<Self> {
+    fn try_from(raw: RawVolumeChangeArgs) -> Result<Self> {
         Ok(Self { delta: raw.delta })
+    }
+}
+
+impl TryFrom<RawVolumeSetArgs> for ParsedVolumeSetArgs {
+    type Error = anyhow::Error;
+
+    fn try_from(raw: RawVolumeSetArgs) -> Result<Self> {
+        Ok(Self { volume: raw.volume })
     }
 }
 
@@ -214,8 +228,16 @@ impl Player {
         Response::new_ok()
     }
 
-    pub fn req_volume(&self, ParsedVolumeArgs { delta }: ParsedVolumeArgs) -> Response {
-        self.change_volume(delta);
+    pub fn req_volume_change(
+        &self,
+        ParsedVolumeChangeArgs { delta }: ParsedVolumeChangeArgs,
+    ) -> Response {
+        self.volume_change(delta);
+        Response::new_ok()
+    }
+
+    pub fn req_volume_set(&self, ParsedVolumeSetArgs { volume }: ParsedVolumeSetArgs) -> Response {
+        self.volume_set(volume);
         Response::new_ok()
     }
 

@@ -1,12 +1,11 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use lazy_static::lazy_static;
-use serde_json::Value;
 use std::collections::HashMap;
 
 use libfoksalclient::{
-    client::FoksalClient,
-    model::{PlaybackState, PlayerState, QueueMode},
+    blocking::BlockingFoksalClient,
+    model::{PlaybackState, PlayerState, QueueMode, TagValue},
 };
 
 #[derive(Subcommand)]
@@ -43,7 +42,9 @@ enum Command {
     /// set playback to loop mode
     Loop,
     /// change volume by delta
-    Volume { delta: i8 },
+    VolumeChange { delta: i8 },
+    /// set volume
+    VolumeSet { volume: u8 },
     /// seek within the current song
     Seek { seconds: i64 },
     /// clear the playback queue
@@ -55,7 +56,7 @@ enum Command {
 /// foksal-ctl – a basic command line controller for foksal
 #[derive(Parser)]
 #[command(name = "foksal-ctl", version, about, infer_subcommands = true)]
-struct Cli {
+struct CliArgs {
     /// port that the foksal instance (local or proxy) is listening on
     #[arg(short = 'p', long, default_value_t = 2137, global = true)]
     port: u16,
@@ -85,7 +86,7 @@ fn playback_state_str(state: PlaybackState) -> String {
     format!("state:\t{}", s)
 }
 
-fn format_song(data: &HashMap<String, Value>) -> String {
+fn format_song(data: &HashMap<String, TagValue>) -> String {
     let values: Vec<_> = TAGS
         .iter()
         .map(|tag| {
@@ -94,7 +95,7 @@ fn format_song(data: &HashMap<String, Value>) -> String {
                     if let Some(s) = v.as_str() {
                         Some(s.to_owned())
                     } else {
-                        v.as_u64().map(|s| s.to_string())
+                        v.as_i64().map(|s| s.to_string())
                     }
                 })
                 .unwrap_or(N_A.into())
@@ -130,7 +131,10 @@ fn queue_pos_str(pos: Option<usize>) -> String {
     format!("queue_pos:\t{}", s)
 }
 
-fn queue_str(data: &HashMap<&String, &Option<HashMap<String, Value>>>, queue: &[String]) -> String {
+fn queue_str(
+    data: &HashMap<&String, &Option<HashMap<String, TagValue>>>,
+    queue: &[String],
+) -> String {
     let mut s = String::new();
     for (i, uri) in queue.iter().enumerate() {
         s.push_str(&format!("\n{}\t", i));
@@ -143,7 +147,7 @@ fn queue_str(data: &HashMap<&String, &Option<HashMap<String, Value>>>, queue: &[
     s
 }
 
-fn print_info(state: PlayerState, songs_data: Vec<Option<HashMap<String, Value>>>) {
+fn print_info(state: PlayerState, songs_data: Vec<Option<HashMap<String, TagValue>>>) {
     let data_map: HashMap<_, _> = state.queue.iter().zip(songs_data.iter()).collect();
     let current_song_str = match state.current_song {
         Some(uri) => {
@@ -173,62 +177,65 @@ fn print_info(state: PlayerState, songs_data: Vec<Option<HashMap<String, Value>>
     println!("{}", queue_str);
 }
 
-async fn send_request(client: &mut FoksalClient, command: Command) -> Result<()> {
+fn send_request(client: &mut BlockingFoksalClient, command: Command) -> Result<()> {
     match command {
         Command::Add { uris } => {
-            client.add_to_queue(uris, None).await?;
+            client.add_to_queue(uris, None)?;
         }
         Command::Play { pos } => {
-            client.play(pos).await?;
+            client.play(pos)?;
         }
         Command::AddPlay { uris } => {
-            client.add_and_play(uris).await?;
+            client.add_and_play(uris)?;
         }
         Command::Move { from, to } => {
-            client.queue_move(from, to).await?;
+            client.queue_move(from, to)?;
         }
         Command::Remove { pos } => {
-            client.remove_from_queue(pos).await?;
+            client.remove_from_queue(pos)?;
         }
         Command::Pause => {
-            client.pause().await?;
+            client.pause()?;
         }
         Command::Resume => {
-            client.resume().await?;
+            client.resume()?;
         }
         Command::Toggle => {
-            client.toggle().await?;
+            client.toggle()?;
         }
         Command::Stop => {
-            client.stop().await?;
+            client.stop()?;
         }
         Command::Next => {
-            client.next().await?;
+            client.next()?;
         }
         Command::Prev => {
-            client.prev().await?;
+            client.prev()?;
         }
         Command::Sequential => {
-            client.queue_seq().await?;
+            client.queue_seq()?;
         }
         Command::Random => {
-            client.queue_random().await?;
+            client.queue_random()?;
         }
         Command::Loop => {
-            client.queue_loop().await?;
+            client.queue_loop()?;
         }
-        Command::Volume { delta } => {
-            client.volume(delta).await?;
+        Command::VolumeChange { delta } => {
+            client.volume_change(delta)?;
+        }
+        Command::VolumeSet { volume } => {
+            client.volume_set(volume)?;
         }
         Command::Seek { seconds } => {
-            client.seek(seconds).await?;
+            client.seek(seconds)?;
         }
         Command::Clear => {
-            client.queue_clear().await?;
+            client.queue_clear()?;
         }
         Command::State => {
-            let state = client.state().await?;
-            let songs_data = client.metadata(state.queue.clone(), TAGS.to_vec()).await?;
+            let state = client.state()?;
+            let songs_data = client.metadata(state.queue.clone(), TAGS.to_vec())?;
             print_info(state, songs_data);
         }
     };
@@ -236,12 +243,11 @@ async fn send_request(client: &mut FoksalClient, command: Command) -> Result<()>
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let cli = Cli::parse();
-    let (mut client, _) = FoksalClient::connect("localhost", cli.port).await?;
-    let res = send_request(&mut client, cli.command).await;
-    client.close().await?;
+fn main() -> Result<()> {
+    let args = CliArgs::parse();
+    let mut client = BlockingFoksalClient::connect("localhost", args.port)?;
+    let res = send_request(&mut client, args.command);
+    client.close()?;
 
     res
 }

@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    Filter, PlaybackState, PlayerState, QueueMode, SelectGroup, SongMetadata, SortOrder,
-    SubscriptionTarget, UniqueGroup,
+    Filter, PlaybackState, PlayerState, QueueMode, RawSelectGroup, RawSongMetadata, RawUniqueGroup,
+    SortOrder, SubscriptionTarget,
 };
 
 /// A request sent to foksal.
@@ -34,8 +34,11 @@ pub(crate) enum Request {
     Stop,
     Next,
     Prev,
-    Volume {
+    VolumeChange {
         delta: i8,
+    },
+    VolumeSet {
+        volume: u8,
     },
     Seek {
         seconds: i64,
@@ -122,7 +125,7 @@ pub(crate) struct RawResponse {
 
     // Fields from `metadata` response
     #[serde(default)]
-    pub metadata: Option<Vec<Option<SongMetadata>>>,
+    pub metadata: Option<Vec<Option<RawSongMetadata>>>,
 
     // Fields from `select` and `unique` responses
     #[serde(default)]
@@ -139,7 +142,6 @@ pub(crate) struct WelcomeMessage {
 }
 
 impl RawResponse {
-    /// Extract a [`PlayerState`] from a `state` response.
     pub fn into_player_state(self) -> Option<PlayerState> {
         Some(PlayerState {
             current_song: self.current_song,
@@ -152,14 +154,12 @@ impl RawResponse {
         })
     }
 
-    /// Extract select groups from a response.
-    pub fn into_select_groups(self) -> Option<Vec<SelectGroup>> {
+    pub fn into_select_groups(self) -> Option<Vec<RawSelectGroup>> {
         let v = self.values?;
         serde_json::from_value(v).ok()
     }
 
-    /// Extract unique groups from a response.
-    pub fn into_unique_groups(self) -> Option<Vec<UniqueGroup>> {
+    pub fn into_unique_groups(self) -> Option<Vec<RawUniqueGroup>> {
         let v = self.values?;
         serde_json::from_value(v).ok()
     }
@@ -225,9 +225,9 @@ mod tests {
 
     #[test]
     fn serialize_volume() {
-        let req = Request::Volume { delta: -5 };
+        let req = Request::VolumeChange { delta: -5 };
         let json = serde_json::to_value(&req).unwrap();
-        assert_eq!(json["kind"], "volume");
+        assert_eq!(json["kind"], "volume_change");
         assert_eq!(json["delta"], -5);
     }
 

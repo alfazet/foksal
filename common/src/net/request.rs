@@ -98,8 +98,14 @@ pub struct RawPlayArgs {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RawVolumeArgs {
+pub struct RawVolumeChangeArgs {
     pub delta: i8,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawVolumeSetArgs {
+    pub volume: u8,
 }
 
 #[derive(Deserialize)]
@@ -130,7 +136,8 @@ pub enum RawPlayerRequest {
     AddAndPlay(RawAddAndPlayArgs),
     Play(RawPlayArgs),
     Seek(RawSeekArgs),
-    Volume(RawVolumeArgs),
+    VolumeChange(RawVolumeChangeArgs),
+    VolumeSet(RawVolumeSetArgs),
     State,
     Pause,
     Resume,
@@ -226,7 +233,9 @@ impl RawPlayerRequestArgs for RawPlayArgs {}
 
 impl RawPlayerRequestArgs for RawAddAndPlayArgs {}
 
-impl RawPlayerRequestArgs for RawVolumeArgs {}
+impl RawPlayerRequestArgs for RawVolumeChangeArgs {}
+
+impl RawPlayerRequestArgs for RawVolumeSetArgs {}
 
 impl RawPlayerRequestArgs for RawSeekArgs {}
 

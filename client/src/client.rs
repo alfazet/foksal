@@ -6,10 +6,12 @@ use futures_util::{
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 use tokio::{
     net::TcpStream,
     sync::{mpsc as tokio_chan, oneshot},
+    time,
 };
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, tungstenite::Message as WsMessage};
 use uuid::Uuid;
@@ -21,12 +23,12 @@ type WsWrite = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, WsMessage>;
 type WsRead = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 
 pub struct FoksalClient {
-    sink: WsWrite,
+    ws_write: WsWrite,
     pending: PendingMap,
 }
 
 impl FoksalClient {
-    /// Connect to a foksal instance.
+    /// Connect to a foksal instance in an async fashion.
     ///
     /// Returns the client handle and a receiver for events and asynchronous errors.
     ///
@@ -57,20 +59,25 @@ impl FoksalClient {
         let (ws_stream, _) = tokio_tungstenite::connect_async(&url).await?;
         let (ws_write, ws_read) = ws_stream.split();
         let pending = Arc::new(Mutex::new(HashMap::new()));
-        let (event_tx, event_rx) = tokio_chan::unbounded_channel();
+        let (tx_event, rx_event) = tokio_chan::unbounded_channel();
 
         let pending_clone = Arc::clone(&pending);
         tokio::spawn(async move {
-            run_reader(ws_read, pending_clone, event_tx).await;
+            run_reader(ws_read, pending_clone, tx_event).await;
         });
 
-        let client = Self {
-            // sink: Arc::new(Mutex::new(ws_write)),
-            sink: ws_write,
-            pending,
-        };
+        let client = Self { ws_write, pending };
 
-        Ok((client, event_rx))
+        Ok((client, rx_event))
+    }
+
+    /// Same as [connect](`Self::connect`) but with a timeout (in seconds).
+    pub async fn connect_timeout(
+        host: impl AsRef<str>,
+        port: u16,
+        timeout: Duration,
+    ) -> Result<(Self, tokio_chan::UnboundedReceiver<AsyncMessage>), FoksalError> {
+        time::timeout(timeout, Self::connect(host, port)).await?
     }
 
     /// Add songs to the playback queue.
@@ -151,8 +158,15 @@ impl FoksalClient {
     /// Change the volume by a relative delta.
     ///
     /// Note: the resulting volume is always clamped between 0 and 100.
-    pub async fn volume(&mut self, delta: i8) -> Result<(), FoksalError> {
-        self.send_no_response(Request::Volume { delta }).await
+    pub async fn volume_change(&mut self, delta: i8) -> Result<(), FoksalError> {
+        self.send_no_response(Request::VolumeChange { delta }).await
+    }
+
+    /// Set the volume.
+    ///
+    /// Note: the resulting volume is always clamped between 0 and 100.
+    pub async fn volume_set(&mut self, volume: u8) -> Result<(), FoksalError> {
+        self.send_no_response(Request::VolumeSet { volume }).await
     }
 
     /// Seek within the current song. For forward/backward seeking, `seconds` must be
@@ -196,10 +210,24 @@ impl FoksalClient {
         let response = self
             .send_with_response(Request::Metadata { uris, tags })
             .await?;
-
-        response
+        let metadata = response
             .metadata
-            .ok_or_else(|| FoksalError::ProtocolError("invalid `metadata` response".into()))
+            .ok_or_else(|| FoksalError::ProtocolError("invalid `metadata` response".into()))?;
+        let mut parsed_metadata = Vec::new();
+        for map in metadata.into_iter() {
+            if let Some(map) = map {
+                let mut new_map = HashMap::new();
+                for (key, json_val) in map.into_iter() {
+                    let val = TagValue::try_from(json_val)?;
+                    new_map.insert(key, val);
+                }
+                parsed_metadata.push(Some(new_map));
+            } else {
+                parsed_metadata.push(None);
+            }
+        }
+
+        Ok(parsed_metadata)
     }
 
     /// Fetch song URIs (with optional regex filtering and grouping).
@@ -211,10 +239,23 @@ impl FoksalClient {
         let response = self
             .send_with_response(Request::Select { filters, group_by })
             .await?;
-
-        response
+        let select_groups = response
             .into_select_groups()
-            .ok_or_else(|| FoksalError::ProtocolError("invalid `select` response".into()))
+            .ok_or_else(|| FoksalError::ProtocolError("invalid `select` response".into()))?;
+        let mut parsed_select_groups = Vec::new();
+        for group in select_groups {
+            let mut parsed_tags = HashMap::new();
+            for (key, json_val) in group.tags.into_iter() {
+                let val = TagValue::try_from(json_val)?;
+                parsed_tags.insert(key, val);
+            }
+            parsed_select_groups.push(SelectGroup {
+                uris: group.uris,
+                tags: parsed_tags,
+            });
+        }
+
+        Ok(parsed_select_groups)
     }
 
     /// Get unique values of a tag over all songs in the database (with optional grouping and
@@ -232,10 +273,25 @@ impl FoksalClient {
                 sort,
             })
             .await?;
-
-        response
+        let unique_groups = response
             .into_unique_groups()
-            .ok_or_else(|| FoksalError::ProtocolError("invalid `unique` response".into()))
+            .ok_or_else(|| FoksalError::ProtocolError("invalid `unique` response".into()))?;
+        let mut parsed_unique_groups = Vec::new();
+        for group in unique_groups {
+            let parsed_unique: Result<Vec<_>, _> =
+                group.unique.into_iter().map(TagValue::try_from).collect();
+            let mut parsed_tags = HashMap::new();
+            for (key, json_val) in group.tags.into_iter() {
+                let val = TagValue::try_from(json_val)?;
+                parsed_tags.insert(key, val);
+            }
+            parsed_unique_groups.push(UniqueGroup {
+                unique: parsed_unique?,
+                tags: parsed_tags,
+            });
+        }
+
+        Ok(parsed_unique_groups)
     }
 
     /// Fetch the cover art image for a song (if available).
@@ -256,6 +312,14 @@ impl FoksalClient {
         }
     }
 
+    /// Close the connection to foksal
+    pub async fn close(&mut self) -> Result<(), FoksalError> {
+        self.ws_write
+            .send(WsMessage::Close(None))
+            .await
+            .map_err(FoksalError::WsConnectionFailed)
+    }
+
     /// Subscribe to events emitted by the given target.
     pub async fn subscribe(&mut self, target: SubscriptionTarget) -> Result<(), FoksalError> {
         self.send_no_response(Request::Subscribe { to: target })
@@ -268,14 +332,6 @@ impl FoksalClient {
             .await
     }
 
-    /// Close the connection to foksal
-    pub async fn close(&mut self) -> Result<(), FoksalError> {
-        self.sink
-            .send(WsMessage::Close(None))
-            .await
-            .map_err(FoksalError::ConnectionFailed)
-    }
-
     /// send a request (we care about the content of the positive response)
     async fn send_with_response(&mut self, request: Request) -> Result<RawResponse, FoksalError> {
         let token = Uuid::new_v4().to_string();
@@ -284,10 +340,10 @@ impl FoksalClient {
         let content = serde_json::to_vec(&value)?;
         let (tx, rx) = oneshot::channel();
         self.pending.lock().unwrap().insert(token, tx);
-        self.sink
+        self.ws_write
             .send(WsMessage::Binary(content.into()))
             .await
-            .map_err(FoksalError::ConnectionFailed)?;
+            .map_err(FoksalError::WsConnectionFailed)?;
         let response = rx.await.map_err(|_| FoksalError::Disconnected)?;
 
         if response.ok {
@@ -309,18 +365,16 @@ impl FoksalClient {
 async fn run_reader(
     mut ws_read: WsRead,
     pending: PendingMap,
-    event_tx: tokio_chan::UnboundedSender<AsyncMessage>,
+    tx_event: tokio_chan::UnboundedSender<AsyncMessage>,
 ) {
     while let Some(msg) = ws_read.next().await {
         let data = match msg {
             Ok(WsMessage::Binary(data)) => data,
-            Ok(WsMessage::Text(text)) => text.as_bytes().to_vec().into(),
-            Ok(WsMessage::Close(_)) => break,
-            Ok(_) => continue,
-            Err(_) => break,
+            Ok(WsMessage::Close(_)) | Err(_) => break,
+            _ => continue,
         };
         let parsed = match serde_json::from_slice::<FoksalMessage>(&data) {
-            Ok(m) => m,
+            Ok(msg) => msg,
             Err(_) => continue,
         };
         match parsed {
@@ -332,10 +386,10 @@ async fn run_reader(
                 }
             }
             FoksalMessage::Event(event) => {
-                let _ = event_tx.send(AsyncMessage::Event(event));
+                let _ = tx_event.send(AsyncMessage::Event(event));
             }
             FoksalMessage::AsyncError(err) => {
-                let _ = event_tx.send(AsyncMessage::Error(AsyncError {
+                let _ = tx_event.send(AsyncMessage::Error(AsyncError {
                     error: err.error,
                     reason: err.reason,
                 }));
@@ -343,7 +397,7 @@ async fn run_reader(
             FoksalMessage::Welcome(WelcomeMessage { version }) => {
                 let lib_major_version = format!("v{}", env!("CARGO_PKG_VERSION_MAJOR"));
                 if !version.starts_with(&lib_major_version) {
-                    let _ = event_tx.send(AsyncMessage::Error(AsyncError {
+                    let _ = tx_event.send(AsyncMessage::Error(AsyncError {
                         error: "major version incompatiblity".into(),
                         reason: format!(
                             "libfoksal {} is incompatible with foksal {}",

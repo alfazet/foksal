@@ -24,6 +24,10 @@ impl Volume {
         self.0 = self.0.saturating_add_signed(delta).min(MAX_VOLUME)
     }
 
+    pub fn set(&mut self, volume: u8) {
+        self.0 = volume.min(MAX_VOLUME)
+    }
+
     pub fn to_mult(&self) -> f32 {
         (((K * (self.0 as f32)).exp() - 1.0) / 1000.0).clamp(0.0, 1.0)
     }
