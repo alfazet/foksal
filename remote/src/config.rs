@@ -8,6 +8,7 @@ use tracing::{info, warn};
 use libfoksalcommon::config::*;
 
 #[derive(Parser)]
+#[command(name = "foksal-remote", version, about)]
 pub struct RemoteArgs {
     /// Foksal config file
     #[arg(short = 'c', long = "config")]

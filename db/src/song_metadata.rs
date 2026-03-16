@@ -6,7 +6,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use symphonia::core::meta::{MetadataRevision, Visual};
+use symphonia::core::meta::MetadataRevision;
 
 use crate::{
     filter::ParsedFilter,
@@ -17,7 +17,7 @@ use crate::{
 #[derive(Clone, Debug, Default)]
 pub struct SongMetadata {
     items: HashMap<TagKey, Value>,
-    cover_art: Option<Visual>,
+    uri: PathBuf, // absolute path
 }
 
 impl SongMetadata {
@@ -28,14 +28,14 @@ impl SongMetadata {
             .format
             .metadata()
             .current()
-            .map(SongMetadata::from_revision)
+            .map(|r| SongMetadata::from_revision(r, &abs_path))
             .unwrap_or_default();
         let from_probe = probe_res
             .metadata
             .get()
             .map(|m| {
                 m.current()
-                    .map(SongMetadata::from_revision)
+                    .map(|r| SongMetadata::from_revision(r, &abs_path))
                     .unwrap_or_default()
             })
             .unwrap_or_default();
@@ -82,13 +82,19 @@ impl SongMetadata {
         })
     }
 
-    pub fn cover_art(&self) -> Option<String> {
-        self.cover_art
-            .as_ref()
-            .map(|image| BASE64_STANDARD.encode(&image.data))
+    pub fn cover_art(&self) -> Result<String> {
+        let mut probe_res = fs_utils::get_probe_result(&self.uri)?;
+        let image = probe_res
+            .format
+            .metadata()
+            .current()
+            .and_then(|m| m.visuals().first().cloned())
+            .ok_or(anyhow!("no cover art found"))?;
+
+        Ok(BASE64_STANDARD.encode(&image.data))
     }
 
-    fn from_revision(revision: &MetadataRevision) -> Self {
+    fn from_revision(revision: &MetadataRevision, uri: &Path) -> Self {
         let mut items = HashMap::new();
         for tag in revision.tags() {
             if let Some(tag_key) = tag.std_key.and_then(|key| TagKey::try_from(key).ok()) {
@@ -97,15 +103,18 @@ impl SongMetadata {
                     .or_insert_with(|| Value::String(tag.value.to_string()));
             }
         }
-        let cover_art = revision.visuals().first().cloned();
+        // let cover_art = revision.visuals().first().cloned();
 
-        Self { items, cover_art }
+        Self {
+            items,
+            uri: uri.to_path_buf(),
+        }
     }
 
     fn merge(self, other: Self) -> Self {
         Self {
             items: self.items.into_iter().chain(other.items).collect(),
-            cover_art: self.cover_art.or(other.cover_art),
+            uri: self.uri,
         }
     }
 }
