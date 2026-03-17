@@ -93,6 +93,7 @@ pub(crate) enum FoksalMessage {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+/// An asynchronous error that might refer to any already sent request.
 pub struct AsyncError {
     pub error: String,
     pub reason: String,
@@ -168,6 +169,7 @@ impl RawResponse {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event")]
 #[serde(rename_all = "snake_case")]
+/// An asynchronous event emitted by foksal to all relevant subscribers.
 pub enum Event {
     /// Queue contents changed.
     QueueContent { queue: Vec<String> },

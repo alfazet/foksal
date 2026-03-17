@@ -15,5 +15,5 @@ lazy_static! {
     pub static ref DEFAULT_IGNORE_GLOBSET: Vec<Glob> = Vec::new();
     pub static ref DEFAULT_ALLOWED_EXTS: [String; 3] =
         ["mp3".to_owned(), "m4a".to_owned(), "flac".to_owned()];
-    pub static ref DEFAULT_REMOTE_ADDR: String = "127.0.0.1".to_owned();
+    pub static ref DEFAULT_REMOTE_ADDR: String = "localhost".to_owned();
 }

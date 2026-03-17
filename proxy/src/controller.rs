@@ -166,7 +166,7 @@ async fn run(
     rx_async_error: broadcast::Receiver<SinkError>,
     c_token: CancellationToken,
 ) -> Result<()> {
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", local_port)).await?;
+    let listener = TcpListener::bind(format!("localhost:{}", local_port)).await?;
     let (mut ws_write, mut ws_read) = ws_stream.split();
     let (tx_remote_request, mut rx_remote_request) =
         tokio_chan::unbounded_channel::<RemoteRequest>();
