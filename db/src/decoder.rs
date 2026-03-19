@@ -22,7 +22,6 @@ use libfoksalcommon::{
 };
 
 const MAX_CACHE_SIZE: usize = 4;
-const MAX_N_JOBS: usize = 8;
 
 struct DecoderRequest {
     start: usize,
@@ -32,8 +31,9 @@ struct DecoderRequest {
 
 pub struct Decoder {
     music_root: PathBuf,
-    cache: Arc<RwLock<LruCache<PathBuf, AudioChunk>>>,
-    jobs: LruCache<PathBuf, cbeam_chan::Sender<DecoderRequest>>,
+    // TODO: these caches could be merged
+    song_cache: Arc<RwLock<LruCache<PathBuf, AudioChunk>>>,
+    job_cache: LruCache<PathBuf, cbeam_chan::Sender<DecoderRequest>>,
 }
 
 impl PartialEq for DecoderRequest {
@@ -68,12 +68,12 @@ impl Decoder {
         let cache = Arc::new(RwLock::new(LruCache::new(
             NonZeroUsize::new(MAX_CACHE_SIZE).unwrap(),
         )));
-        let jobs = LruCache::new(NonZeroUsize::new(MAX_N_JOBS).unwrap());
+        let jobs = LruCache::new(NonZeroUsize::new(MAX_CACHE_SIZE).unwrap());
 
         Self {
             music_root,
-            cache,
-            jobs,
+            song_cache: cache,
+            job_cache: jobs,
         }
     }
 
@@ -95,7 +95,7 @@ impl Decoder {
 
     async fn get_chunk(&mut self, uri: PathBuf, start: usize, end: usize) -> Result<AudioChunk> {
         if let Some(chunk) = self
-            .cache
+            .song_cache
             .write()
             .unwrap()
             .get(&uri)
@@ -109,14 +109,14 @@ impl Decoder {
             end,
             respond_to,
         };
-        match self.jobs.get(&uri) {
+        match self.job_cache.get(&uri) {
             Some(tx) => {
                 let _ = tx.send(request);
             }
             None => {
                 let tx = self.start_decoding(uri.clone())?;
                 let _ = tx.send(request);
-                self.jobs.put(uri, tx);
+                self.job_cache.push(uri, tx);
             }
         }
 
@@ -134,7 +134,7 @@ impl Decoder {
         let mut decoder =
             symphonia::default::get_codecs().make(&track.codec_params, &Default::default())?;
 
-        let cache = Arc::clone(&self.cache);
+        let cache = Arc::clone(&self.song_cache);
         let (tx_request, rx_request) = cbeam_chan::unbounded::<DecoderRequest>();
         tokio::task::spawn_blocking(move || {
             let mut samples = Vec::<CommonSample>::new();
@@ -229,7 +229,7 @@ impl Decoder {
                 }
                 let entire_chunk = AudioChunk::new(samples, n_channels, sample_rate, false);
                 let mut cache = cache.write().unwrap();
-                cache.put(uri, entire_chunk);
+                cache.push(uri, entire_chunk);
             }
         });
 

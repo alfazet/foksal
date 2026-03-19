@@ -120,11 +120,9 @@ impl Player {
     }
 
     pub fn queue_move(&mut self, from: usize, to: usize) -> Result<()> {
-        let prev_pos = self.queue.pos();
         self.queue.move_pos(from, to)?;
-        if prev_pos != self.queue.pos() {
-            self.notify_queue_pos();
-        }
+        self.notify_queue_content();
+        self.notify_queue_pos();
 
         Ok(())
     }
@@ -168,8 +166,10 @@ impl Player {
         let _ = self.tx_sink_request.send(SinkRequest::Toggle);
     }
 
-    pub fn stop(&self) {
+    pub fn stop(&mut self) {
         let _ = self.tx_sink_request.send(SinkRequest::Stop);
+        self.queue.stop();
+        self.notify_queue_pos();
     }
 
     pub fn next(&mut self) {

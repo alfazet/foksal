@@ -111,7 +111,7 @@ impl Queue {
     }
 
     pub fn push_and_move_to(&mut self, uris: &[impl AsRef<Path> + Into<PathBuf>]) {
-        let _ = self.move_to(self.list.len() - 1);
+        let _ = self.move_to(self.list.len().saturating_sub(1));
         self.push(uris);
     }
 
@@ -137,9 +137,9 @@ impl Queue {
         if let Some(p) = self.pos {
             if p == from {
                 self.pos = Some(to);
-            } else if from < p && p < to {
+            } else if from < p && p <= to {
                 self.pos = Some(p - 1);
-            } else if to < p && p < from {
+            } else if to <= p && p < from {
                 self.pos = Some(p + 1);
             }
         }

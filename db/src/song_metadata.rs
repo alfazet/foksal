@@ -24,6 +24,7 @@ impl SongMetadata {
     pub fn try_new(uri: impl AsRef<Path>, root: impl Into<PathBuf>) -> Result<Self> {
         let abs_path = fs_utils::to_absolute(&uri, root);
         let mut probe_res = fs_utils::get_probe_result(&abs_path)?;
+        // TODO: refactor this process
         let from_container = probe_res
             .format
             .metadata()
@@ -84,11 +85,17 @@ impl SongMetadata {
 
     pub fn cover_art(&self) -> Result<String> {
         let mut probe_res = fs_utils::get_probe_result(&self.uri)?;
-        let image = probe_res
+        let image_src1 = probe_res
             .format
             .metadata()
             .current()
-            .and_then(|m| m.visuals().first().cloned())
+            .and_then(|m| m.visuals().first().cloned());
+        let image_src2 = probe_res
+            .metadata
+            .get()
+            .and_then(|m| m.current().and_then(|m| m.visuals().first().cloned()));
+        let image = image_src1
+            .or(image_src2)
             .ok_or(anyhow!("no cover art found"))?;
 
         Ok(BASE64_STANDARD.encode(&image.data))
@@ -103,7 +110,6 @@ impl SongMetadata {
                     .or_insert_with(|| Value::String(tag.value.to_string()));
             }
         }
-        // let cover_art = revision.visuals().first().cloned();
 
         Self {
             items,
@@ -112,9 +118,15 @@ impl SongMetadata {
     }
 
     fn merge(self, other: Self) -> Self {
+        let uri = if self.uri.as_os_str().is_empty() {
+            other.uri
+        } else {
+            self.uri
+        };
+
         Self {
             items: self.items.into_iter().chain(other.items).collect(),
-            uri: self.uri,
+            uri,
         }
     }
 }
