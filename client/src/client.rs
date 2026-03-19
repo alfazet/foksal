@@ -317,7 +317,7 @@ impl FoksalClient {
         self.ws_write
             .send(WsMessage::Close(None))
             .await
-            .map_err(FoksalError::WsConnectionFailed)
+            .map_err(FoksalError::WsConnectionError)
     }
 
     /// Subscribe to events emitted by the given target.
@@ -343,13 +343,13 @@ impl FoksalClient {
         self.ws_write
             .send(WsMessage::Binary(content.into()))
             .await
-            .map_err(FoksalError::WsConnectionFailed)?;
+            .map_err(FoksalError::WsConnectionError)?;
         let response = rx.await.map_err(|_| FoksalError::Disconnected)?;
 
         if response.ok {
             Ok(response)
         } else {
-            Err(FoksalError::ServerError(
+            Err(FoksalError::ProtocolError(
                 response.reason.unwrap_or_else(|| "unknown error".into()),
             ))
         }

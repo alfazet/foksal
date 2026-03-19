@@ -173,7 +173,7 @@ async fn run(
     rx_async_error: broadcast::Receiver<SinkError>,
     c_token: CancellationToken,
 ) -> Result<()> {
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
+    let listener = TcpListener::bind(format!("localhost:{}", port)).await?;
     loop {
         tokio::select! {
             Ok((stream, addr)) = listener.accept() => {

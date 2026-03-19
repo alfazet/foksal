@@ -7,6 +7,7 @@ use tracing::{info, warn};
 use libfoksalcommon::config::*;
 
 #[derive(Parser)]
+#[command(name = "foksal-proxy", version, about)]
 pub struct ProxyArgs {
     /// Foksal config file
     #[arg(short = 'c', long = "config")]

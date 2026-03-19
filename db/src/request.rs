@@ -319,8 +319,8 @@ impl Db {
     pub fn cover_art(&self, ParsedCoverArtArgs { uri }: ParsedCoverArtArgs) -> Response {
         match self.table.get(&uri) {
             Some(metadata) => match metadata.cover_art() {
-                Some(image) => Response::new_ok().with_item("image", &image),
-                None => Response::new_err("no cover art available"),
+                Ok(image) => Response::new_ok().with_item("image", &image),
+                Err(e) => Response::new_err(e.to_string()),
             },
             None => Response::new_err("song not found"),
         }

@@ -261,7 +261,7 @@ impl Player {
         Response::new_ok()
     }
 
-    pub fn req_stop(&self) -> Response {
+    pub fn req_stop(&mut self) -> Response {
         self.stop();
         Response::new_ok()
     }

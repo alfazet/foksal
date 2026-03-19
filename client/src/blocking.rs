@@ -17,7 +17,7 @@ impl BlockingFoksalClient {
     pub fn connect(host: impl AsRef<str>, port: u16) -> Result<Self, FoksalError> {
         let url = format!("ws://{}:{}", host.as_ref(), port);
         let (mut stream, _) = tungstenite::connect(&url)?;
-        let welcome_err = Err(FoksalError::ServerError(
+        let welcome_err = Err(FoksalError::ProtocolError(
             "invalid foksal welcome message".into(),
         ));
         let first_msg = match stream.read()? {
@@ -31,7 +31,7 @@ impl BlockingFoksalClient {
             FoksalMessage::Welcome(WelcomeMessage { version }) => {
                 let lib_major_version = format!("v{}", env!("CARGO_PKG_VERSION_MAJOR"));
                 if !version.starts_with(&lib_major_version) {
-                    return Err(FoksalError::ServerError(format!(
+                    return Err(FoksalError::ProtocolError(format!(
                         "libfoksal {} is incompatible with foksal {}",
                         env!("CARGO_PKG_VERSION"),
                         version,
@@ -271,7 +271,7 @@ impl BlockingFoksalClient {
     pub fn close(&mut self) -> Result<(), FoksalError> {
         self.stream
             .send(WsMessage::Close(None))
-            .map_err(FoksalError::WsConnectionFailed)
+            .map_err(FoksalError::WsConnectionError)
     }
 
     /// send a request (we care about the content of the positive response)
@@ -279,7 +279,7 @@ impl BlockingFoksalClient {
         let content = serde_json::to_vec(&request)?;
         self.stream
             .send(WsMessage::Binary(content.into()))
-            .map_err(FoksalError::WsConnectionFailed)?;
+            .map_err(FoksalError::WsConnectionError)?;
 
         // ignore all async errors, return whenever we get the actual response
         loop {
