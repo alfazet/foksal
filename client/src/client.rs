@@ -193,9 +193,7 @@ impl FoksalClient {
     /// Fetch the full current player state (see [`PlayerState`]).
     pub async fn state(&mut self) -> Result<PlayerState, FoksalError> {
         let response = self.send_with_response(Request::State).await?;
-        response
-            .into_player_state()
-            .ok_or_else(|| FoksalError::ProtocolError("invalid `state` response".into()))
+        response.into_player_state()
     }
 
     /// Get metadata values for specific songs.
@@ -210,9 +208,9 @@ impl FoksalClient {
         let response = self
             .send_with_response(Request::Metadata { uris, tags })
             .await?;
-        let metadata = response
-            .metadata
-            .ok_or_else(|| FoksalError::ProtocolError("invalid `metadata` response".into()))?;
+        let metadata = response.metadata.ok_or(FoksalError::UnexpectedResponse {
+            request: "metadata",
+        })?;
         let mut parsed_metadata = Vec::new();
         for map in metadata.into_iter() {
             if let Some(map) = map {
@@ -239,9 +237,7 @@ impl FoksalClient {
         let response = self
             .send_with_response(Request::Select { filters, group_by })
             .await?;
-        let select_groups = response
-            .into_select_groups()
-            .ok_or_else(|| FoksalError::ProtocolError("invalid `select` response".into()))?;
+        let select_groups = response.into_select_groups()?;
         let mut parsed_select_groups = Vec::new();
         for group in select_groups {
             let mut parsed_tags = HashMap::new();
@@ -273,9 +269,7 @@ impl FoksalClient {
                 sort,
             })
             .await?;
-        let unique_groups = response
-            .into_unique_groups()
-            .ok_or_else(|| FoksalError::ProtocolError("invalid `unique` response".into()))?;
+        let unique_groups = response.into_unique_groups()?;
         let mut parsed_unique_groups = Vec::new();
         for group in unique_groups {
             let parsed_unique: Result<Vec<_>, _> =
@@ -302,9 +296,7 @@ impl FoksalClient {
         let response = self.send_with_response(Request::CoverArt { uri }).await?;
         match response.image {
             Some(encoded) => {
-                let bytes = BASE64_STANDARD.decode(&encoded).map_err(|e| {
-                    FoksalError::ProtocolError(format!("base64 decoding error ({})", e))
-                })?;
+                let bytes = BASE64_STANDARD.decode(&encoded)?;
 
                 Ok(Some(bytes))
             }
@@ -317,7 +309,7 @@ impl FoksalClient {
         self.ws_write
             .send(WsMessage::Close(None))
             .await
-            .map_err(FoksalError::WsConnectionError)
+            .map_err(FoksalError::WebSocket)
     }
 
     /// Subscribe to events emitted by the given target.
@@ -343,15 +335,15 @@ impl FoksalClient {
         self.ws_write
             .send(WsMessage::Binary(content.into()))
             .await
-            .map_err(FoksalError::WsConnectionError)?;
+            .map_err(FoksalError::WebSocket)?;
         let response = rx.await.map_err(|_| FoksalError::Disconnected)?;
 
         if response.ok {
             Ok(response)
         } else {
-            Err(FoksalError::ProtocolError(
-                response.reason.unwrap_or_else(|| "unknown error".into()),
-            ))
+            Err(FoksalError::ServerError {
+                reason: response.reason.unwrap_or_else(|| "unknown error".into()),
+            })
         }
     }
 
@@ -389,7 +381,7 @@ async fn run_reader(
                 let _ = tx_event.send(AsyncMessage::Event(event));
             }
             FoksalMessage::AsyncError(err) => {
-                let _ = tx_event.send(AsyncMessage::Error(AsyncError {
+                let _ = tx_event.send(AsyncMessage::Error(FoksalError::Async {
                     error: err.error,
                     reason: err.reason,
                 }));
@@ -397,13 +389,9 @@ async fn run_reader(
             FoksalMessage::Welcome(WelcomeMessage { version }) => {
                 let lib_major_version = format!("v{}", env!("CARGO_PKG_VERSION_MAJOR"));
                 if !version.starts_with(&lib_major_version) {
-                    let _ = tx_event.send(AsyncMessage::Error(AsyncError {
-                        error: "major version incompatiblity".into(),
-                        reason: format!(
-                            "libfoksal {} is incompatible with foksal {}",
-                            env!("CARGO_PKG_VERSION"),
-                            version
-                        ),
+                    let _ = tx_event.send(AsyncMessage::Error(FoksalError::VersionMismatch {
+                        lib_version: env!("CARGO_PKG_VERSION").into(),
+                        instance_version: version,
                     }));
                 }
             }
