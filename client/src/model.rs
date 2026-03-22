@@ -106,7 +106,7 @@ pub struct SelectGroup {
     /// Tag values common to this group (e.g. `{"albumartist": "ILLENIUM", "album": "Awake"}`).
     pub tags: HashMap<String, TagValue>,
 }
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub(crate) struct RawSelectGroup {
     pub uris: Vec<String>,
     #[serde(flatten)]
@@ -120,7 +120,7 @@ pub struct UniqueGroup {
     /// Values of the grouping tags.
     pub tags: HashMap<String, TagValue>,
 }
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub(crate) struct RawUniqueGroup {
     pub unique: Vec<Value>,
     #[serde(flatten)]
@@ -134,8 +134,10 @@ impl TryFrom<Value> for TagValue {
         match value {
             Value::Null => Ok(Self::Null),
             Value::String(s) => Ok(Self::String(s)),
-            Value::Number(n) => Ok(Self::Number(n.as_i64().expect("numbers should fit in i64"))),
-            _ => Err(FoksalError::InvalidTagValue),
+            Value::Number(n) => Ok(Self::Number(n.as_i64().expect("numbers should fit in an i64"))),
+            Value::Bool(_) => Err(FoksalError::InvalidTagValue("bool".into())),
+            Value::Array(_) => Err(FoksalError::InvalidTagValue("array".into())),
+            Value::Object(_) => Err(FoksalError::InvalidTagValue("object".into())),
         }
     }
 }

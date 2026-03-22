@@ -17,28 +17,24 @@ impl BlockingFoksalClient {
     pub fn connect(host: impl AsRef<str>, port: u16) -> Result<Self, FoksalError> {
         let url = format!("ws://{}:{}", host.as_ref(), port);
         let (mut stream, _) = tungstenite::connect(&url)?;
-        let welcome_err = Err(FoksalError::ProtocolError(
-            "invalid foksal welcome message".into(),
-        ));
         let first_msg = match stream.read()? {
             WsMessage::Binary(bytes) => match serde_json::from_slice::<FoksalMessage>(&bytes) {
                 Ok(msg) => msg,
-                _ => return welcome_err,
+                _ => return Err(FoksalError::InvalidWelcome),
             },
-            _ => return welcome_err,
+            _ => return Err(FoksalError::InvalidWelcome),
         };
         match first_msg {
             FoksalMessage::Welcome(WelcomeMessage { version }) => {
                 let lib_major_version = format!("v{}", env!("CARGO_PKG_VERSION_MAJOR"));
                 if !version.starts_with(&lib_major_version) {
-                    return Err(FoksalError::ProtocolError(format!(
-                        "libfoksal {} is incompatible with foksal {}",
-                        env!("CARGO_PKG_VERSION"),
-                        version,
-                    )));
+                    return Err(FoksalError::VersionMismatch {
+                        lib_version: env!("CARGO_PKG_VERSION").into(),
+                        instance_version: version,
+                    });
                 }
             }
-            _ => return welcome_err,
+            _ => return Err(FoksalError::InvalidWelcome),
         }
 
         Ok(Self { stream })
@@ -156,9 +152,7 @@ impl BlockingFoksalClient {
     /// Fetch the full current player state (see [`PlayerState`]).
     pub fn state(&mut self) -> Result<PlayerState, FoksalError> {
         let response = self.send_with_response(Request::State)?;
-        response
-            .into_player_state()
-            .ok_or_else(|| FoksalError::ProtocolError("invalid `state` response".into()))
+        response.into_player_state()
     }
 
     /// Get metadata values for specific songs.
@@ -171,9 +165,9 @@ impl BlockingFoksalClient {
         tags: Vec<String>,
     ) -> Result<Vec<Option<SongMetadata>>, FoksalError> {
         let response = self.send_with_response(Request::Metadata { uris, tags })?;
-        let metadata = response
-            .metadata
-            .ok_or_else(|| FoksalError::ProtocolError("invalid `metadata` response".into()))?;
+        let metadata = response.metadata.ok_or(FoksalError::UnexpectedResponse {
+            request: "metadata",
+        })?;
         let mut parsed_metadata = Vec::new();
         for map in metadata.into_iter() {
             if let Some(map) = map {
@@ -198,9 +192,7 @@ impl BlockingFoksalClient {
         group_by: Option<Vec<String>>,
     ) -> Result<Vec<SelectGroup>, FoksalError> {
         let response = self.send_with_response(Request::Select { filters, group_by })?;
-        let select_groups = response
-            .into_select_groups()
-            .ok_or_else(|| FoksalError::ProtocolError("invalid `select` response".into()))?;
+        let select_groups = response.into_select_groups()?;
         let mut parsed_select_groups = Vec::new();
         for group in select_groups {
             let mut parsed_tags = HashMap::new();
@@ -228,9 +220,7 @@ impl BlockingFoksalClient {
             group_by,
             sort,
         })?;
-        let unique_groups = response
-            .into_unique_groups()
-            .ok_or_else(|| FoksalError::ProtocolError("invalid `unique` response".into()))?;
+        let unique_groups = response.into_unique_groups()?;
         let mut parsed_unique_groups = Vec::new();
         for group in unique_groups {
             let parsed_unique: Result<Vec<_>, _> =
@@ -257,9 +247,7 @@ impl BlockingFoksalClient {
         let response = self.send_with_response(Request::CoverArt { uri })?;
         match response.image {
             Some(encoded) => {
-                let bytes = BASE64_STANDARD.decode(&encoded).map_err(|e| {
-                    FoksalError::ProtocolError(format!("base64 decoding error ({})", e))
-                })?;
+                let bytes = BASE64_STANDARD.decode(&encoded)?;
 
                 Ok(Some(bytes))
             }
@@ -271,7 +259,7 @@ impl BlockingFoksalClient {
     pub fn close(&mut self) -> Result<(), FoksalError> {
         self.stream
             .send(WsMessage::Close(None))
-            .map_err(FoksalError::WsConnectionError)
+            .map_err(FoksalError::WebSocket)
     }
 
     /// send a request (we care about the content of the positive response)
@@ -279,7 +267,7 @@ impl BlockingFoksalClient {
         let content = serde_json::to_vec(&request)?;
         self.stream
             .send(WsMessage::Binary(content.into()))
-            .map_err(FoksalError::WsConnectionError)?;
+            .map_err(FoksalError::WebSocket)?;
 
         // ignore all async errors, return whenever we get the actual response
         loop {

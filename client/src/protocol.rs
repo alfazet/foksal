@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+use crate::error::FoksalError;
 use crate::model::{
     Filter, PlaybackState, PlayerState, QueueMode, RawSelectGroup, RawSongMetadata, RawUniqueGroup,
     SortOrder, SubscriptionTarget,
 };
 
 /// A request sent to foksal.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(tag = "kind")]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Request {
@@ -83,7 +84,7 @@ pub(crate) enum Request {
 /// 2. An async event (identified by `event` field)
 /// 3. An async error (identified by `error` field)
 /// 4. A welcome message (only once, identified by `version` field)
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub(crate) enum FoksalMessage {
     Event(Event),
@@ -92,15 +93,15 @@ pub(crate) enum FoksalMessage {
     Welcome(WelcomeMessage),
 }
 
-#[derive(Debug, Clone, Deserialize)]
 /// An asynchronous error that might refer to any already sent request.
-pub struct AsyncError {
+#[derive(Debug, Deserialize)]
+pub(crate) struct AsyncError {
     pub error: String,
     pub reason: String,
 }
 
 /// A raw response to a request.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub(crate) struct RawResponse {
     pub ok: bool,
     #[serde(default)]
@@ -137,36 +138,42 @@ pub(crate) struct RawResponse {
     pub image: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub(crate) struct WelcomeMessage {
     pub version: String,
 }
 
 impl RawResponse {
-    pub fn into_player_state(self) -> Option<PlayerState> {
-        Some(PlayerState {
+    pub fn into_player_state(self) -> Result<PlayerState, FoksalError> {
+        let err = || FoksalError::UnexpectedResponse { request: "state" };
+
+        Ok(PlayerState {
             current_song: self.current_song,
             queue_pos: self.queue_pos,
-            queue_mode: self.queue_mode?,
-            queue: self.queue?,
-            playback_state: self.playback_state?,
-            volume: self.volume?,
-            elapsed: self.elapsed?,
+            queue_mode: self.queue_mode.ok_or_else(err)?,
+            queue: self.queue.ok_or_else(err)?,
+            playback_state: self.playback_state.ok_or_else(err)?,
+            volume: self.volume.ok_or_else(err)?,
+            elapsed: self.elapsed.ok_or_else(err)?,
         })
     }
 
-    pub fn into_select_groups(self) -> Option<Vec<RawSelectGroup>> {
-        let v = self.values?;
-        serde_json::from_value(v).ok()
+    pub fn into_select_groups(self) -> Result<Vec<RawSelectGroup>, FoksalError> {
+        let v = self
+            .values
+            .ok_or(FoksalError::UnexpectedResponse { request: "select" })?;
+        serde_json::from_value(v).map_err(FoksalError::Serialization)
     }
 
-    pub fn into_unique_groups(self) -> Option<Vec<RawUniqueGroup>> {
-        let v = self.values?;
-        serde_json::from_value(v).ok()
+    pub fn into_unique_groups(self) -> Result<Vec<RawUniqueGroup>, FoksalError> {
+        let v = self
+            .values
+            .ok_or(FoksalError::UnexpectedResponse { request: "unique" })?;
+        serde_json::from_value(v).map_err(FoksalError::Serialization)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(tag = "event")]
 #[serde(rename_all = "snake_case")]
 /// An asynchronous event emitted by foksal to all relevant subscribers.
@@ -193,10 +200,10 @@ pub enum Event {
     Remove { uri: String },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum AsyncMessage {
     Event(Event),
-    Error(AsyncError),
+    Error(FoksalError),
 }
 
 #[cfg(test)]
