@@ -14,7 +14,11 @@ pub struct RemoteArgs {
     #[arg(short = 'c', long = "config")]
     pub config_file: Option<PathBuf>,
 
-    /// Port for proxy instances to connect to
+    /// Address of the interface that foksal should bind to
+    #[arg(short = 'i', long = "interface")]
+    pub interface: Option<String>,
+
+    /// Port that foksal should listen on
     #[arg(short = 'p', long = "port")]
     pub port: Option<u16>,
 
@@ -29,6 +33,7 @@ pub struct RemoteArgs {
 
 #[derive(Default, Deserialize, Serialize)]
 struct RawRemoteConfig {
+    interface: Option<String>,
     port: Option<u16>,
     music_root: Option<PathBuf>,
     allowed_exts: Option<Vec<String>>,
@@ -36,6 +41,7 @@ struct RawRemoteConfig {
 }
 
 pub struct ParsedRemoteConfig {
+    pub interface: String,
     pub port: u16,
     pub music_root: PathBuf,
     pub ignore_globset: Vec<Glob>,
@@ -51,6 +57,7 @@ impl From<&ParsedRemoteConfig> for RawRemoteConfig {
             .collect();
 
         Self {
+            interface: Some(parsed.interface.clone()),
             port: Some(parsed.port),
             music_root: Some(parsed.music_root.clone()),
             allowed_exts: Some(parsed.allowed_exts.clone()),
@@ -102,6 +109,10 @@ impl ParsedRemoteConfig {
         }?;
 
         Ok(Self {
+            interface: args
+                .interface
+                .clone()
+                .unwrap_or(raw.interface.unwrap_or(DEFAULT_REMOTE_INTERFACE.to_owned())),
             port: args.port.unwrap_or(raw.port.unwrap_or(DEFAULT_PORT)),
             music_root: args
                 .music_root
@@ -120,6 +131,7 @@ mod tests {
     fn empty_args() -> RemoteArgs {
         RemoteArgs {
             config_file: None,
+            interface: None,
             port: None,
             music_root: None,
             log_file: None,
@@ -179,6 +191,7 @@ mod tests {
         let raw: RawRemoteConfig = toml::from_str(toml).unwrap();
         let args = RemoteArgs {
             config_file: None,
+            interface: Some("1.2.3.4".into()),
             port: Some(7312),
             music_root: Some(PathBuf::from("/other")),
             log_file: None,
@@ -186,6 +199,7 @@ mod tests {
         let parsed = ParsedRemoteConfig::try_merge(raw, &args).unwrap();
 
         assert_eq!(parsed.port, 7312);
+        assert_eq!(parsed.interface, "1.2.3.4".to_string());
         assert_eq!(parsed.music_root, PathBuf::from("/other"));
     }
 }

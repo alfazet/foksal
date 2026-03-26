@@ -4,6 +4,7 @@ use std::{env, path::PathBuf};
 
 pub const DEFAULT_PORT: u16 = 2137;
 pub const DEFAULT_AUDIO_BACKEND: &str = "default";
+pub const DEFAULT_REMOTE_INTERFACE: &str = "0.0.0.0";
 
 lazy_static! {
     pub static ref DEFAULT_MUSIC_ROOT: PathBuf =
@@ -15,5 +16,4 @@ lazy_static! {
     pub static ref DEFAULT_IGNORE_GLOBSET: Vec<Glob> = Vec::new();
     pub static ref DEFAULT_ALLOWED_EXTS: [String; 3] =
         ["mp3".to_owned(), "m4a".to_owned(), "flac".to_owned()];
-    pub static ref DEFAULT_REMOTE_ADDR: String = "localhost".to_owned();
 }

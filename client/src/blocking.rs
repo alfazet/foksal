@@ -1,5 +1,5 @@
 use base64::prelude::*;
-use std::{collections::HashMap, net::TcpStream};
+use std::{collections::HashMap, net::TcpStream, path::PathBuf};
 use tokio_tungstenite::tungstenite::{
     self, Message as WsMessage, WebSocket, stream::MaybeTlsStream,
 };
@@ -46,7 +46,7 @@ impl BlockingFoksalClient {
     /// Note: `pos` is zero-indexed.
     pub fn add_to_queue(
         &mut self,
-        uris: Vec<String>,
+        uris: Vec<PathBuf>,
         pos: Option<usize>,
     ) -> Result<(), FoksalError> {
         self.send_no_response(Request::AddToQueue { uris, pos })
@@ -67,7 +67,7 @@ impl BlockingFoksalClient {
     }
 
     /// Append songs to the queue and immediately start playing them.
-    pub fn add_and_play(&mut self, uris: Vec<String>) -> Result<(), FoksalError> {
+    pub fn add_and_play(&mut self, uris: Vec<PathBuf>) -> Result<(), FoksalError> {
         self.send_no_response(Request::AddAndPlay { uris })
     }
 
@@ -161,7 +161,7 @@ impl BlockingFoksalClient {
     /// Entries are `None` for songs not found in the database.
     pub fn metadata(
         &mut self,
-        uris: Vec<String>,
+        uris: Vec<PathBuf>,
         tags: Vec<String>,
     ) -> Result<Vec<Option<SongMetadata>>, FoksalError> {
         let response = self.send_with_response(Request::Metadata { uris, tags })?;
@@ -243,7 +243,7 @@ impl BlockingFoksalClient {
     ///
     /// Returns `None` if the file has no embedded cover art.
     /// The returned bytes are the decoded image data.
-    pub fn cover_art(&mut self, uri: String) -> Result<Option<Vec<u8>>, FoksalError> {
+    pub fn cover_art(&mut self, uri: PathBuf) -> Result<Option<Vec<u8>>, FoksalError> {
         let response = self.send_with_response(Request::CoverArt { uri })?;
         match response.image {
             Some(encoded) => {

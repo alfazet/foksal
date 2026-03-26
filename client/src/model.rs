@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use crate::error::FoksalError;
 
@@ -54,12 +54,12 @@ pub struct Filter {
 /// Full player state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlayerState {
-    pub current_song: Option<String>,
+    pub current_song: Option<PathBuf>,
     pub queue_pos: Option<usize>,
     pub queue_mode: QueueMode,
-    pub queue: Vec<String>,
+    pub queue: Vec<PathBuf>,
     pub playback_state: PlaybackState,
-    pub volume: usize,
+    pub volume: u8,
     /// In seconds.
     pub elapsed: u64,
 }
@@ -102,13 +102,13 @@ pub(crate) type RawSongMetadata = HashMap<String, Value>;
 /// Group of URIs returned by the `select` request.
 pub struct SelectGroup {
     /// URIs belonging to this group.
-    pub uris: Vec<String>,
+    pub uris: Vec<PathBuf>,
     /// Tag values common to this group (e.g. `{"albumartist": "ILLENIUM", "album": "Awake"}`).
     pub tags: HashMap<String, TagValue>,
 }
 #[derive(Debug, Deserialize)]
 pub(crate) struct RawSelectGroup {
-    pub uris: Vec<String>,
+    pub uris: Vec<PathBuf>,
     #[serde(flatten)]
     pub tags: HashMap<String, Value>,
 }
@@ -134,7 +134,9 @@ impl TryFrom<Value> for TagValue {
         match value {
             Value::Null => Ok(Self::Null),
             Value::String(s) => Ok(Self::String(s)),
-            Value::Number(n) => Ok(Self::Number(n.as_i64().expect("numbers should fit in an i64"))),
+            Value::Number(n) => Ok(Self::Number(
+                n.as_i64().expect("numbers should fit in an i64"),
+            )),
             Value::Bool(_) => Err(FoksalError::InvalidTagValue("bool".into())),
             Value::Array(_) => Err(FoksalError::InvalidTagValue("array".into())),
             Value::Object(_) => Err(FoksalError::InvalidTagValue("object".into())),

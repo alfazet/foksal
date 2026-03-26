@@ -5,6 +5,7 @@ use futures_util::{
 };
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -63,7 +64,7 @@ impl FoksalClient {
 
         let pending_clone = Arc::clone(&pending);
         tokio::spawn(async move {
-            run_reader(ws_read, pending_clone, tx_event).await;
+            run(ws_read, pending_clone, tx_event).await;
         });
 
         let client = Self { ws_write, pending };
@@ -86,7 +87,7 @@ impl FoksalClient {
     /// Note: `pos` is zero-indexed.
     pub async fn add_to_queue(
         &mut self,
-        uris: Vec<String>,
+        uris: Vec<PathBuf>,
         pos: Option<usize>,
     ) -> Result<(), FoksalError> {
         self.send_no_response(Request::AddToQueue { uris, pos })
@@ -109,7 +110,7 @@ impl FoksalClient {
     }
 
     /// Append songs to the queue and immediately start playing them.
-    pub async fn add_and_play(&mut self, uris: Vec<String>) -> Result<(), FoksalError> {
+    pub async fn add_and_play(&mut self, uris: Vec<PathBuf>) -> Result<(), FoksalError> {
         self.send_no_response(Request::AddAndPlay { uris }).await
     }
 
@@ -202,7 +203,7 @@ impl FoksalClient {
     /// Entries are `None` for songs not found in the database.
     pub async fn metadata(
         &mut self,
-        uris: Vec<String>,
+        uris: Vec<PathBuf>,
         tags: Vec<String>,
     ) -> Result<Vec<Option<SongMetadata>>, FoksalError> {
         let response = self
@@ -292,7 +293,7 @@ impl FoksalClient {
     ///
     /// Returns `None` if the file has no embedded cover art.
     /// The returned bytes are the decoded image data.
-    pub async fn cover_art(&mut self, uri: String) -> Result<Option<Vec<u8>>, FoksalError> {
+    pub async fn cover_art(&mut self, uri: PathBuf) -> Result<Option<Vec<u8>>, FoksalError> {
         let response = self.send_with_response(Request::CoverArt { uri }).await?;
         match response.image {
             Some(encoded) => {
@@ -354,7 +355,7 @@ impl FoksalClient {
     }
 }
 
-async fn run_reader(
+async fn run(
     mut ws_read: WsRead,
     pending: PendingMap,
     tx_event: tokio_chan::UnboundedSender<AsyncMessage>,

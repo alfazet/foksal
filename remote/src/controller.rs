@@ -153,12 +153,13 @@ async fn handle_proxy(
 }
 
 async fn run(
+    interface: String,
     port: u16,
     tx_db_request: tokio_chan::UnboundedSender<DbRequest>,
     tx_file_request: tokio_chan::UnboundedSender<FileRequest>,
     c_token: CancellationToken,
 ) -> Result<()> {
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
+    let listener = TcpListener::bind(format!("{}:{}", interface, port)).await?;
     loop {
         tokio::select! {
             Ok((stream, _)) = listener.accept() => {
@@ -183,6 +184,7 @@ pub fn spawn(config: ParsedRemoteConfig, c_token: CancellationToken) -> JoinHand
         let (tx_file_request, rx_file_request) = tokio_chan::unbounded_channel();
 
         let ParsedRemoteConfig {
+            interface,
             port,
             music_root,
             ignore_globset,
@@ -197,7 +199,7 @@ pub fn spawn(config: ParsedRemoteConfig, c_token: CancellationToken) -> JoinHand
         )?;
 
         let res = tokio::select! {
-            res = run(port, tx_db_request, tx_file_request, c_token.clone()) => res,
+            res = run(interface, port, tx_db_request, tx_file_request, c_token.clone()) => res,
             _ = c_token.cancelled() => Ok(()),
         };
         c_token.cancel();
