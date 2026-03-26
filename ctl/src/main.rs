@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use libfoksalclient::{
     blocking::BlockingFoksalClient,
@@ -11,14 +11,14 @@ use libfoksalclient::{
 #[derive(Subcommand)]
 enum Command {
     /// add songs to the end of the playback queue (paths can be relative)
-    Add { uris: Vec<String> },
+    Add { uris: Vec<PathBuf> },
     /// start playing the song at a given queue position
     Play {
         /// queue position (0-indexed)
         pos: usize,
     },
     /// add songs to the end of the playback queue and play them immediately
-    AddPlay { uris: Vec<String> },
+    AddPlay { uris: Vec<PathBuf> },
     /// move a song from one queue position to another
     Move { from: usize, to: usize },
     /// remove a song from the queue by position (0-indexed)
@@ -132,8 +132,8 @@ fn queue_pos_str(pos: Option<usize>) -> String {
 }
 
 fn queue_str(
-    data: &HashMap<&String, &Option<HashMap<String, TagValue>>>,
-    queue: &[String],
+    data: &HashMap<&PathBuf, &Option<HashMap<String, TagValue>>>,
+    queue: &[PathBuf],
 ) -> String {
     let mut s = String::new();
     for (i, uri) in queue.iter().enumerate() {

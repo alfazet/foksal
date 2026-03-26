@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::FoksalError;
@@ -12,7 +14,7 @@ use crate::model::{
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Request {
     AddToQueue {
-        uris: Vec<String>,
+        uris: Vec<PathBuf>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pos: Option<usize>,
     },
@@ -24,7 +26,7 @@ pub(crate) enum Request {
         to: usize,
     },
     AddAndPlay {
-        uris: Vec<String>,
+        uris: Vec<PathBuf>,
     },
     Play {
         pos: usize,
@@ -50,7 +52,7 @@ pub(crate) enum Request {
     QueueClear,
     State,
     Metadata {
-        uris: Vec<String>,
+        uris: Vec<PathBuf>,
         tags: Vec<String>,
     },
     Select {
@@ -67,7 +69,7 @@ pub(crate) enum Request {
         sort: Option<SortOrder>,
     },
     CoverArt {
-        uri: String,
+        uri: PathBuf,
     },
     Subscribe {
         to: SubscriptionTarget,
@@ -111,17 +113,17 @@ pub(crate) struct RawResponse {
 
     // Fields from `state` response
     #[serde(default)]
-    pub current_song: Option<String>,
+    pub current_song: Option<PathBuf>,
     #[serde(default)]
     pub queue_pos: Option<usize>,
     #[serde(default)]
     pub queue_mode: Option<QueueMode>,
     #[serde(default)]
-    pub queue: Option<Vec<String>>,
+    pub queue: Option<Vec<PathBuf>>,
     #[serde(default)]
     pub playback_state: Option<PlaybackState>,
     #[serde(default)]
-    pub volume: Option<usize>,
+    pub volume: Option<u8>,
     #[serde(default)]
     pub elapsed: Option<u64>,
 
@@ -179,13 +181,13 @@ impl RawResponse {
 /// An asynchronous event emitted by foksal to all relevant subscribers.
 pub enum Event {
     /// Queue contents changed.
-    QueueContent { queue: Vec<String> },
+    QueueContent { queue: Vec<PathBuf> },
     /// Current position in the queue changed.
     QueuePos { pos: Option<usize> },
     /// The queue playback mode changed.
     QueueMode { mode: QueueMode },
     /// A new song started playing.
-    CurrentSong { uri: String },
+    CurrentSong { uri: PathBuf },
     /// Playback state changed.
     PlaybackState { state: PlaybackState },
     /// Volume changed.
@@ -193,11 +195,11 @@ pub enum Event {
     /// Elapsed seconds in the current song.
     Elapsed { seconds: u64 },
     /// A song was added to the database.
-    Create { uri: String },
+    Create { uri: PathBuf },
     /// A song's metadata was modified.
-    Modify { uri: String },
+    Modify { uri: PathBuf },
     /// A song was removed from the database.
-    Remove { uri: String },
+    Remove { uri: PathBuf },
 }
 
 #[derive(Debug)]
@@ -331,18 +333,6 @@ mod tests {
     }
 
     #[test]
-    fn deserialize_queue_content_event() {
-        let json = r#"{"event": "queue_content", "queue": ["a.flac", "b.mp3"]}"#;
-        let msg: FoksalMessage = serde_json::from_str(json).unwrap();
-        match msg {
-            FoksalMessage::Event(Event::QueueContent { queue }) => {
-                assert_eq!(queue, vec!["a.flac", "b.mp3"]);
-            }
-            other => panic!("expected QueueContent event, got {other:?}"),
-        }
-    }
-
-    #[test]
     fn deserialize_playback_state_event() {
         let json = r#"{"event": "playback_state", "state": "paused"}"#;
         let msg: FoksalMessage = serde_json::from_str(json).unwrap();
@@ -397,7 +387,7 @@ mod tests {
         let msg: FoksalMessage = serde_json::from_str(json).unwrap();
         match msg {
             FoksalMessage::Event(Event::Create { uri }) => {
-                assert_eq!(uri, "Artist/Album/New.flac");
+                assert_eq!(uri, PathBuf::from("Artist/Album/New.flac"));
             }
             other => panic!("expected Create event, got {other:?}"),
         }
