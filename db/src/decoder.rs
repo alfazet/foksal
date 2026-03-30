@@ -21,8 +21,6 @@ use libfoksalcommon::{
     net::request::{FileRequest, RawFileRequest},
 };
 
-const MAX_CACHE_SIZE: usize = 4;
-
 struct DecoderRequest {
     start: usize,
     end: usize,
@@ -31,7 +29,6 @@ struct DecoderRequest {
 
 pub struct Decoder {
     music_root: PathBuf,
-    // TODO: these caches could be merged
     song_cache: Arc<RwLock<LruCache<PathBuf, AudioChunk>>>,
     job_cache: LruCache<PathBuf, cbeam_chan::Sender<DecoderRequest>>,
 }
@@ -63,17 +60,17 @@ impl Ord for DecoderRequest {
 }
 
 impl Decoder {
-    pub fn new(music_root: impl Into<PathBuf>) -> Self {
+    pub fn new(music_root: impl Into<PathBuf>, song_cache_size: usize, n_jobs: usize) -> Self {
         let music_root = music_root.into();
-        let cache = Arc::new(RwLock::new(LruCache::new(
-            NonZeroUsize::new(MAX_CACHE_SIZE).unwrap(),
+        let song_cache = Arc::new(RwLock::new(LruCache::new(
+            NonZeroUsize::new(song_cache_size).unwrap(),
         )));
-        let jobs = LruCache::new(NonZeroUsize::new(MAX_CACHE_SIZE).unwrap());
+        let job_cache = LruCache::new(NonZeroUsize::new(n_jobs).unwrap());
 
         Self {
             music_root,
-            song_cache: cache,
-            job_cache: jobs,
+            song_cache,
+            job_cache,
         }
     }
 
@@ -227,9 +224,10 @@ impl Decoder {
                     );
                     let _ = respond_to.send(chunk);
                 }
-                let entire_chunk = AudioChunk::new(samples, n_channels, sample_rate, false);
+
+                let entire_song = AudioChunk::new(samples, n_channels, sample_rate, false);
                 let mut cache = cache.write().unwrap();
-                cache.push(uri, entire_chunk);
+                cache.push(uri, entire_song);
             }
         });
 

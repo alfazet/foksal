@@ -28,11 +28,14 @@ If the config file isn't there, it will be generated based on the default config
 - `port` - The port for clients to connect to (default: `2137`).
 - `music_root` - The root directory of your music collection (default: foksal's working dir).
 - `audio_backend` - The audio backend (alsa, pulse, pipewire, etc.) (default: well, 1default` - it should work just fine).
-- `ignore_globset` - A list of Unix glob patterns that foksal will ignore when searching for music (default: empty).
 - `allowed_exts` - A list of extensions that foksal will treat as music files (default: `mp3`, `m4a` and `flac`).
+- `song_cache_size` - How many songs can be cached (in RAM) by the decoder (default: 4).
+- `n_jobs` - How many songs can be decoded in parallel (default: 4).
+- `ignore_globset` - A list of Unix glob patterns that foksal will ignore when searching for music (default: empty).
 
 ### Remote options
-- `port`, `music_root`, `ignore_globset` and `allowed_exts` - Same meaning as in local config (`port` is the port that proxy instances should connect to, make sure it's accessible).
+- `interface` - The interface the remote instance will listen on (default: `0.0.0.0` (all interfaces)).
+- `port`, `music_root`, `allowed_exts`, `song_cache_size`, `n_jobs` and `ignore_globset` - Same meaning as in local config (`port` is the port that proxy instances should connect to, make sure it's accessible).
 
 ### Proxy options
 - `remote_addr` - The IP address of the remote foksal instance.
