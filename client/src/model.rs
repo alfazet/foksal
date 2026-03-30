@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, fmt, fmt::Display, path::PathBuf};
 
 use crate::error::FoksalError;
 
@@ -64,6 +64,29 @@ pub struct PlayerState {
     pub elapsed: u64,
 }
 
+/// Available tag keys
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum TagKey {
+    Album,
+    AlbumArtist,
+    Artist,
+    Composer,
+    Date,
+    DiscNumber,
+    Duration,
+    FileSize,
+    Genre,
+    Performer,
+    Producer,
+    SortAlbum,
+    SortAlbumArtist,
+    SortArtist,
+    SortComposer,
+    SortTrackTitle,
+    TrackNumber,
+    TrackTitle,
+}
+
 /// Valid types for tag values.
 #[derive(Debug, Clone)]
 pub enum TagValue {
@@ -74,29 +97,11 @@ pub enum TagValue {
 
 /// Tag values and other file metadata of a song.
 ///
-/// Available keys:
-/// - `album`
-/// - `albumartist`
-/// - `artist`
-/// - `composer`
-/// - `date`
-/// - `discnumber`
-/// - `duration`
-/// - `filesize`
-/// - `genre`
-/// - `performer`
-/// - `producer`
-/// - `sortalbum`
-/// - `sortalbumartist`
-/// - `sortartist`
-/// - `sortcomposer`
-/// - `sorttracktitle`
-/// - `tracknumber`
-/// - `tracktitle`
+/// For available tag keys, see [`TagKey`].
 ///
-/// All of the above have string values, with the exception of `duration` (number of seconds) and `filesize` (number of
+/// All tags have string values, with the exception of `duration` (number of seconds) and `filesize` (number of
 /// bytes).
-pub type SongMetadata = HashMap<String, TagValue>;
+pub type SongMetadata = HashMap<TagKey, TagValue>;
 pub(crate) type RawSongMetadata = HashMap<String, Value>;
 
 /// Group of URIs returned by the `select` request.
@@ -104,7 +109,7 @@ pub struct SelectGroup {
     /// URIs belonging to this group.
     pub uris: Vec<PathBuf>,
     /// Tag values common to this group (e.g. `{"albumartist": "ILLENIUM", "album": "Awake"}`).
-    pub tags: HashMap<String, TagValue>,
+    pub tags: HashMap<TagKey, TagValue>,
 }
 #[derive(Debug, Deserialize)]
 pub(crate) struct RawSelectGroup {
@@ -118,13 +123,68 @@ pub struct UniqueGroup {
     /// Unique values of the requested tag within this group.
     pub unique: Vec<TagValue>,
     /// Values of the grouping tags.
-    pub tags: HashMap<String, TagValue>,
+    pub tags: HashMap<TagKey, TagValue>,
 }
 #[derive(Debug, Deserialize)]
 pub(crate) struct RawUniqueGroup {
     pub unique: Vec<Value>,
     #[serde(flatten)]
     pub tags: HashMap<String, Value>,
+}
+
+impl TryFrom<&str> for TagKey {
+    type Error = FoksalError;
+
+    fn try_from(value: &str) -> Result<Self, FoksalError> {
+        match value {
+            "album" => Ok(TagKey::Album),
+            "albumartist" => Ok(TagKey::AlbumArtist),
+            "artist" => Ok(TagKey::Artist),
+            "composer" => Ok(TagKey::Composer),
+            "date" => Ok(TagKey::Date),
+            "discnumber" => Ok(TagKey::DiscNumber),
+            "duration" => Ok(TagKey::Duration),
+            "filesize" => Ok(TagKey::FileSize),
+            "genre" => Ok(TagKey::Genre),
+            "performer" => Ok(TagKey::Performer),
+            "producer" => Ok(TagKey::Producer),
+            "sortalbum" => Ok(TagKey::SortAlbum),
+            "sortalbumartist" => Ok(TagKey::SortAlbumArtist),
+            "sortartist" => Ok(TagKey::SortArtist),
+            "sortcomposer" => Ok(TagKey::SortComposer),
+            "sorttracktitle" => Ok(TagKey::SortTrackTitle),
+            "tracknumber" => Ok(TagKey::TrackNumber),
+            "tracktitle" => Ok(TagKey::TrackTitle),
+            other => Err(FoksalError::InvalidTagKey(other.to_string())),
+        }
+    }
+}
+
+impl Display for TagKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            TagKey::Album => "album",
+            TagKey::AlbumArtist => "albumartist",
+            TagKey::Artist => "artist",
+            TagKey::Composer => "composer",
+            TagKey::Date => "date",
+            TagKey::DiscNumber => "discnumber",
+            TagKey::Duration => "duration",
+            TagKey::FileSize => "filesize",
+            TagKey::Genre => "genre",
+            TagKey::Performer => "performer",
+            TagKey::Producer => "producer",
+            TagKey::SortAlbum => "sortalbum",
+            TagKey::SortAlbumArtist => "sortalbumartist",
+            TagKey::SortArtist => "sortartist",
+            TagKey::SortComposer => "sortcomposer",
+            TagKey::SortTrackTitle => "sorttracktitle",
+            TagKey::TrackNumber => "tracknumber",
+            TagKey::TrackTitle => "tracktitle",
+        };
+
+        write!(f, "{}", s)
+    }
 }
 
 impl TryFrom<Value> for TagValue {

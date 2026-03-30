@@ -24,6 +24,8 @@ pub enum FoksalError {
     },
     #[error("invalid welcome message received")]
     InvalidWelcome,
+    #[error("invalid tag key `{0}`")]
+    InvalidTagKey(String),
     #[error("invalid tag value: expected null, string, or number, got {0}")]
     InvalidTagValue(String),
     #[error("disconnected from the foksal instance")]

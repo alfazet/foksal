@@ -204,8 +204,9 @@ impl FoksalClient {
     pub async fn metadata(
         &mut self,
         uris: Vec<PathBuf>,
-        tags: Vec<String>,
+        tags: Vec<TagKey>,
     ) -> Result<Vec<Option<SongMetadata>>, FoksalError> {
+        let tags = tags.into_iter().map(|t| t.to_string()).collect();
         let response = self
             .send_with_response(Request::Metadata { uris, tags })
             .await?;
@@ -217,6 +218,7 @@ impl FoksalClient {
             if let Some(map) = map {
                 let mut new_map = HashMap::new();
                 for (key, json_val) in map.into_iter() {
+                    let key = TagKey::try_from(key.as_str())?;
                     let val = TagValue::try_from(json_val)?;
                     new_map.insert(key, val);
                 }
@@ -233,8 +235,9 @@ impl FoksalClient {
     pub async fn select(
         &mut self,
         filters: Option<Vec<Filter>>,
-        group_by: Option<Vec<String>>,
+        group_by: Option<Vec<TagKey>>,
     ) -> Result<Vec<SelectGroup>, FoksalError> {
+        let group_by = group_by.map(|g| g.into_iter().map(|t| t.to_string()).collect());
         let response = self
             .send_with_response(Request::Select { filters, group_by })
             .await?;
@@ -243,6 +246,7 @@ impl FoksalClient {
         for group in select_groups {
             let mut parsed_tags = HashMap::new();
             for (key, json_val) in group.tags.into_iter() {
+                let key = TagKey::try_from(key.as_str())?;
                 let val = TagValue::try_from(json_val)?;
                 parsed_tags.insert(key, val);
             }
@@ -260,9 +264,10 @@ impl FoksalClient {
     pub async fn unique(
         &mut self,
         tag: String,
-        group_by: Option<Vec<String>>,
+        group_by: Option<Vec<TagKey>>,
         sort: Option<SortOrder>,
     ) -> Result<Vec<UniqueGroup>, FoksalError> {
+        let group_by = group_by.map(|g| g.into_iter().map(|t| t.to_string()).collect());
         let response = self
             .send_with_response(Request::Unique {
                 tag,
@@ -277,6 +282,7 @@ impl FoksalClient {
                 group.unique.into_iter().map(TagValue::try_from).collect();
             let mut parsed_tags = HashMap::new();
             for (key, json_val) in group.tags.into_iter() {
+                let key = TagKey::try_from(key.as_str())?;
                 let val = TagValue::try_from(json_val)?;
                 parsed_tags.insert(key, val);
             }

@@ -162,8 +162,9 @@ impl BlockingFoksalClient {
     pub fn metadata(
         &mut self,
         uris: Vec<PathBuf>,
-        tags: Vec<String>,
+        tags: Vec<TagKey>,
     ) -> Result<Vec<Option<SongMetadata>>, FoksalError> {
+        let tags = tags.into_iter().map(|t| t.to_string()).collect();
         let response = self.send_with_response(Request::Metadata { uris, tags })?;
         let metadata = response.metadata.ok_or(FoksalError::UnexpectedResponse {
             request: "metadata",
@@ -173,6 +174,7 @@ impl BlockingFoksalClient {
             if let Some(map) = map {
                 let mut new_map = HashMap::new();
                 for (key, json_val) in map.into_iter() {
+                    let key = TagKey::try_from(key.as_str())?;
                     let val = TagValue::try_from(json_val)?;
                     new_map.insert(key, val);
                 }
@@ -191,12 +193,14 @@ impl BlockingFoksalClient {
         filters: Option<Vec<Filter>>,
         group_by: Option<Vec<String>>,
     ) -> Result<Vec<SelectGroup>, FoksalError> {
+        let group_by = group_by.map(|g| g.into_iter().map(|t| t.to_string()).collect());
         let response = self.send_with_response(Request::Select { filters, group_by })?;
         let select_groups = response.into_select_groups()?;
         let mut parsed_select_groups = Vec::new();
         for group in select_groups {
             let mut parsed_tags = HashMap::new();
             for (key, json_val) in group.tags.into_iter() {
+                let key = TagKey::try_from(key.as_str())?;
                 let val = TagValue::try_from(json_val)?;
                 parsed_tags.insert(key, val);
             }
@@ -215,6 +219,7 @@ impl BlockingFoksalClient {
         group_by: Option<Vec<String>>,
         sort: Option<SortOrder>,
     ) -> Result<Vec<UniqueGroup>, FoksalError> {
+        let group_by = group_by.map(|g| g.into_iter().map(|t| t.to_string()).collect());
         let response = self.send_with_response(Request::Unique {
             tag,
             group_by,
@@ -227,6 +232,7 @@ impl BlockingFoksalClient {
                 group.unique.into_iter().map(TagValue::try_from).collect();
             let mut parsed_tags = HashMap::new();
             for (key, json_val) in group.tags.into_iter() {
+                let key = TagKey::try_from(key.as_str())?;
                 let val = TagValue::try_from(json_val)?;
                 parsed_tags.insert(key, val);
             }

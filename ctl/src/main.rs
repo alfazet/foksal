@@ -1,12 +1,14 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use lazy_static::lazy_static;
 use std::{collections::HashMap, path::PathBuf};
 
 use libfoksalclient::{
     blocking::BlockingFoksalClient,
-    model::{PlaybackState, PlayerState, QueueMode, TagValue},
+    model::{PlaybackState, PlayerState, QueueMode, SongMetadata, TagKey},
 };
+
+const DEFAULT_HOST: &str = "localhost";
+const DEFAULT_PORT: u16 = 2137;
 
 #[derive(Subcommand)]
 enum Command {
@@ -57,23 +59,24 @@ enum Command {
 #[derive(Parser)]
 #[command(name = "foksal-ctl", version, about, infer_subcommands = true)]
 struct CliArgs {
+    /// address of the foksal instance
+    #[arg(short = 'h', long, global = true)]
+    host: Option<String>,
+
     /// port that the foksal instance (local or proxy) is listening on
-    #[arg(short = 'p', long, default_value_t = 2137, global = true)]
-    port: u16,
+    #[arg(short = 'p', long, global = true)]
+    port: Option<u16>,
 
     #[command(subcommand)]
     command: Command,
 }
 
-lazy_static! {
-    static ref TAGS: [String; 4] = [
-        "artist".into(),
-        "album".into(),
-        "tracktitle".into(),
-        "duration".into()
-    ];
-}
-
+const TAGS: [TagKey; 4] = [
+    TagKey::Artist,
+    TagKey::Album,
+    TagKey::TrackTitle,
+    TagKey::Duration,
+];
 const N_A: &str = "[n/a]";
 
 fn playback_state_str(state: PlaybackState) -> String {
@@ -86,11 +89,11 @@ fn playback_state_str(state: PlaybackState) -> String {
     format!("state:\t{}", s)
 }
 
-fn format_song(data: &HashMap<String, TagValue>) -> String {
+fn format_song(data: &SongMetadata) -> String {
     let values: Vec<_> = TAGS
         .iter()
         .map(|tag| {
-            data.get(tag.as_str())
+            data.get(tag)
                 .and_then(|v| {
                     if let Some(s) = v.as_str() {
                         Some(s.to_owned())
@@ -131,10 +134,7 @@ fn queue_pos_str(pos: Option<usize>) -> String {
     format!("queue_pos:\t{}", s)
 }
 
-fn queue_str(
-    data: &HashMap<&PathBuf, &Option<HashMap<String, TagValue>>>,
-    queue: &[PathBuf],
-) -> String {
+fn queue_str(data: &HashMap<&PathBuf, &Option<SongMetadata>>, queue: &[PathBuf]) -> String {
     let mut s = String::new();
     for (i, uri) in queue.iter().enumerate() {
         s.push_str(&format!("\n{}\t", i));
@@ -147,7 +147,7 @@ fn queue_str(
     s
 }
 
-fn print_info(state: PlayerState, songs_data: Vec<Option<HashMap<String, TagValue>>>) {
+fn print_info(state: PlayerState, songs_data: Vec<Option<SongMetadata>>) {
     let data_map: HashMap<_, _> = state.queue.iter().zip(songs_data.iter()).collect();
     let current_song_str = match state.current_song {
         Some(uri) => {
@@ -245,7 +245,10 @@ fn send_request(client: &mut BlockingFoksalClient, command: Command) -> Result<(
 
 fn main() -> Result<()> {
     let args = CliArgs::parse();
-    let mut client = BlockingFoksalClient::connect("localhost", args.port)?;
+    let mut client = BlockingFoksalClient::connect(
+        args.host.unwrap_or(DEFAULT_HOST.to_string()),
+        args.port.unwrap_or(DEFAULT_PORT),
+    )?;
     let res = send_request(&mut client, args.command);
     client.close()?;
 
