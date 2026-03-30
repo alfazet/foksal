@@ -5,6 +5,8 @@ use std::{env, path::PathBuf};
 pub const DEFAULT_PORT: u16 = 2137;
 pub const DEFAULT_AUDIO_BACKEND: &str = "default";
 pub const DEFAULT_REMOTE_INTERFACE: &str = "0.0.0.0";
+pub const DEFAULT_SONG_CACHE_SIZE: usize = 4;
+pub const DEFAULT_N_JOBS: usize = 4;
 
 lazy_static! {
     pub static ref DEFAULT_MUSIC_ROOT: PathBuf =

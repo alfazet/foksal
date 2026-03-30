@@ -7,7 +7,6 @@ use libfoksalclient::{
     model::{PlaybackState, PlayerState, QueueMode, SongMetadata, TagKey},
 };
 
-const DEFAULT_HOST: &str = "localhost";
 const DEFAULT_PORT: u16 = 2137;
 
 #[derive(Subcommand)]
@@ -245,10 +244,7 @@ fn send_request(client: &mut BlockingFoksalClient, command: Command) -> Result<(
 
 fn main() -> Result<()> {
     let args = CliArgs::parse();
-    let mut client = BlockingFoksalClient::connect(
-        args.host.unwrap_or(DEFAULT_HOST.to_string()),
-        args.port.unwrap_or(DEFAULT_PORT),
-    )?;
+    let mut client = BlockingFoksalClient::connect("localhost", args.port.unwrap_or(DEFAULT_PORT))?;
     let res = send_request(&mut client, args.command);
     client.close()?;
 

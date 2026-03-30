@@ -187,8 +187,10 @@ pub fn spawn(config: ParsedRemoteConfig, c_token: CancellationToken) -> JoinHand
             interface,
             port,
             music_root,
-            ignore_globset,
             allowed_exts,
+            song_cache_size,
+            n_jobs,
+            ignore_globset,
         } = config;
         db_controller::spawn(
             music_root,
@@ -196,6 +198,8 @@ pub fn spawn(config: ParsedRemoteConfig, c_token: CancellationToken) -> JoinHand
             allowed_exts,
             rx_db_request,
             rx_file_request,
+            song_cache_size,
+            n_jobs,
         )?;
 
         let res = tokio::select! {
