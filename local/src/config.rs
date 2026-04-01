@@ -37,7 +37,6 @@ struct RawLocalConfig {
     music_root: Option<PathBuf>,
     audio_backend: Option<String>,
     allowed_exts: Option<Vec<String>>,
-    song_cache_size: Option<usize>,
     n_jobs: Option<usize>,
     ignore_globset: Option<Vec<String>>,
 }
@@ -47,7 +46,6 @@ pub struct ParsedLocalConfig {
     pub music_root: PathBuf,
     pub audio_backend: String,
     pub allowed_exts: Vec<String>,
-    pub song_cache_size: usize,
     pub n_jobs: usize,
     pub ignore_globset: Vec<Glob>,
 }
@@ -65,7 +63,6 @@ impl From<&ParsedLocalConfig> for RawLocalConfig {
             music_root: Some(parsed.music_root.clone()),
             audio_backend: Some(parsed.audio_backend.clone()),
             allowed_exts: Some(parsed.allowed_exts.clone()),
-            song_cache_size: Some(parsed.song_cache_size),
             n_jobs: Some(parsed.n_jobs),
             ignore_globset: Some(ignore_globset),
         }
@@ -125,8 +122,7 @@ impl ParsedLocalConfig {
                     .unwrap_or(DEFAULT_AUDIO_BACKEND.to_owned()),
             ),
             allowed_exts: raw.allowed_exts.unwrap_or(DEFAULT_ALLOWED_EXTS.to_vec()),
-            song_cache_size: raw.song_cache_size.unwrap_or(DEFAULT_SONG_CACHE_SIZE),
-            n_jobs: raw.n_jobs.unwrap_or(DEFAULT_N_JOBS),
+            n_jobs: raw.n_jobs.unwrap_or(*DEFAULT_N_JOBS),
             ignore_globset,
         })
     }
@@ -153,7 +149,6 @@ mod tests {
             music_root = "/music"
             audio_backend = "default"
             allowed_exts = ["mp3", "wav"]
-            song_cache_size = 6
             n_jobs = 10
             ignore_globset = ["*.tmp", ".*"]
         "#;
@@ -164,7 +159,6 @@ mod tests {
         assert_eq!(parsed.music_root, PathBuf::from("/music"));
         assert_eq!(parsed.audio_backend, "default");
         assert_eq!(parsed.allowed_exts, vec!["mp3", "wav"]);
-        assert_eq!(parsed.song_cache_size, 6);
         assert_eq!(parsed.n_jobs, 10);
         assert_eq!(parsed.ignore_globset.len(), 2);
         assert_eq!(parsed.ignore_globset[0].glob(), "*.tmp");
@@ -183,8 +177,7 @@ mod tests {
         assert_eq!(parsed.music_root, *DEFAULT_MUSIC_ROOT);
         assert_eq!(parsed.audio_backend, DEFAULT_AUDIO_BACKEND);
         assert_eq!(parsed.allowed_exts, DEFAULT_ALLOWED_EXTS.to_vec());
-        assert_eq!(parsed.song_cache_size, DEFAULT_SONG_CACHE_SIZE);
-        assert_eq!(parsed.n_jobs, DEFAULT_N_JOBS);
+        assert_eq!(parsed.n_jobs, *DEFAULT_N_JOBS);
         assert_eq!(parsed.ignore_globset.len(), DEFAULT_IGNORE_GLOBSET.len());
     }
 
@@ -197,8 +190,7 @@ mod tests {
         assert_eq!(parsed.music_root, *DEFAULT_MUSIC_ROOT);
         assert_eq!(parsed.audio_backend, DEFAULT_AUDIO_BACKEND);
         assert_eq!(parsed.allowed_exts, DEFAULT_ALLOWED_EXTS.to_vec());
-        assert_eq!(parsed.song_cache_size, DEFAULT_SONG_CACHE_SIZE);
-        assert_eq!(parsed.n_jobs, DEFAULT_N_JOBS);
+        assert_eq!(parsed.n_jobs, *DEFAULT_N_JOBS);
         assert!(parsed.ignore_globset.is_empty());
     }
 

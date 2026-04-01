@@ -188,7 +188,6 @@ pub fn spawn(config: ParsedRemoteConfig, c_token: CancellationToken) -> JoinHand
             port,
             music_root,
             allowed_exts,
-            song_cache_size,
             n_jobs,
             ignore_globset,
         } = config;
@@ -198,7 +197,6 @@ pub fn spawn(config: ParsedRemoteConfig, c_token: CancellationToken) -> JoinHand
             allowed_exts,
             rx_db_request,
             rx_file_request,
-            song_cache_size,
             n_jobs,
         )?;
 

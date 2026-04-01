@@ -75,7 +75,6 @@ pub fn spawn(
     allowed_exts: Vec<String>,
     rx_db_request: tokio_chan::UnboundedReceiver<DbRequest>,
     rx_file_request: tokio_chan::UnboundedReceiver<FileRequest>,
-    song_cache_size: usize,
     n_jobs: usize,
 ) -> Result<()> {
     let mut globset_builder = GlobSetBuilder::new();
@@ -91,7 +90,7 @@ pub fn spawn(
         run(db, rx_db_request).await;
     });
 
-    let decoder = Decoder::new(music_root, song_cache_size, n_jobs);
+    let decoder = Decoder::new(music_root, n_jobs);
     tokio::spawn(async move {
         decoder.run(rx_file_request).await;
     });

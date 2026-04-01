@@ -207,7 +207,6 @@ pub fn spawn(config: ParsedLocalConfig, c_token: CancellationToken) -> JoinHandl
             music_root,
             audio_backend,
             ignore_globset,
-            song_cache_size,
             n_jobs,
             allowed_exts,
         } = config;
@@ -217,7 +216,6 @@ pub fn spawn(config: ParsedLocalConfig, c_token: CancellationToken) -> JoinHandl
             allowed_exts,
             rx_db_request,
             rx_file_request,
-            song_cache_size,
             n_jobs,
         )?;
         player_controller::spawn(tx_sink_request, rx_player_request, rx_sink_response);
