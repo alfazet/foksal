@@ -70,6 +70,7 @@ pub enum PlaybackState {
     Stopped,
     Playing,
     Paused,
+    AwaitingNext,
 }
 
 struct Sink {
@@ -114,10 +115,18 @@ impl Sink {
 
     fn change_state(&mut self, new_state: PlaybackState) {
         self.state = new_state;
-        if matches!(new_state, PlaybackState::Stopped) {
+        if matches!(
+            new_state,
+            PlaybackState::Stopped | PlaybackState::AwaitingNext
+        ) {
             self.data = Default::default();
         }
-        let _ = self.tx_response.send(SinkResponse::StateChanged(new_state));
+        if !matches!(new_state, PlaybackState::AwaitingNext) {
+            // AwaitingNext is a special state hidden from the outside world
+            // in reality the sink stops for a moment before playing the next song
+            // but we want the outside world to think that there were no gaps
+            let _ = self.tx_response.send(SinkResponse::StateChanged(new_state));
+        }
     }
 
     fn err_and_stop(&mut self, err: SinkError) {
@@ -129,7 +138,7 @@ impl Sink {
         let samples = &self.data.samples;
         if samples.ptr >= samples.inner.len() && samples.got_all {
             let _ = self.tx_response.send(SinkResponse::SongOver);
-            self.change_state(PlaybackState::Stopped);
+            self.change_state(PlaybackState::AwaitingNext);
         }
     }
 

@@ -1,16 +1,12 @@
 use anyhow::{Result, anyhow};
-use crossbeam_channel::{self as cbeam_chan, TryRecvError};
+use crossbeam_channel::{self as cbeam_chan};
 use lru::LruCache;
 use rkyv::rancor::Error as RkyvError;
-use std::{
-    cmp::Ordering,
-    collections::BinaryHeap,
-    io,
-    num::NonZeroUsize,
-    path::PathBuf,
-    sync::{Arc, RwLock},
+use std::{cmp::Ordering, collections::BinaryHeap, io, num::NonZeroUsize, path::PathBuf};
+use symphonia::core::{
+    audio::SampleBuffer, codecs::Decoder as SymphoniaDecoder, errors::Error as SymphoniaError,
+    formats::FormatReader,
 };
-use symphonia::core::{audio::SampleBuffer, errors::Error as SymphoniaError};
 use tokio::sync::{mpsc as tokio_chan, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
 use tracing::error;
@@ -27,9 +23,20 @@ struct DecoderRequest {
     respond_to: oneshot::Sender<AudioChunk>,
 }
 
+enum DecoderState {
+    Working,
+    Done,
+}
+
+enum DecoderResult {
+    Ok(AudioSpec),
+    Error(anyhow::Error),
+    SkipPacket,
+    SongOver,
+}
+
 pub struct Decoder {
     music_root: PathBuf,
-    song_cache: Arc<RwLock<LruCache<PathBuf, AudioChunk>>>,
     job_cache: LruCache<PathBuf, cbeam_chan::Sender<DecoderRequest>>,
 }
 
@@ -60,16 +67,12 @@ impl Ord for DecoderRequest {
 }
 
 impl Decoder {
-    pub fn new(music_root: impl Into<PathBuf>, song_cache_size: usize, n_jobs: usize) -> Self {
+    pub fn new(music_root: impl Into<PathBuf>, n_jobs: usize) -> Self {
         let music_root = music_root.into();
-        let song_cache = Arc::new(RwLock::new(LruCache::new(
-            NonZeroUsize::new(song_cache_size).unwrap(),
-        )));
         let job_cache = LruCache::new(NonZeroUsize::new(n_jobs).unwrap());
 
         Self {
             music_root,
-            song_cache,
             job_cache,
         }
     }
@@ -91,15 +94,6 @@ impl Decoder {
     }
 
     async fn get_chunk(&mut self, uri: PathBuf, start: usize, end: usize) -> Result<AudioChunk> {
-        if let Some(chunk) = self
-            .song_cache
-            .write()
-            .unwrap()
-            .get(&uri)
-            .map(|chunk| chunk.slice(start, end))
-        {
-            return Ok(chunk);
-        }
         let (respond_to, rx_response) = oneshot::channel();
         let request = DecoderRequest {
             start,
@@ -131,106 +125,126 @@ impl Decoder {
         let mut decoder =
             symphonia::default::get_codecs().make(&track.codec_params, &Default::default())?;
 
-        let cache = Arc::clone(&self.song_cache);
         let (tx_request, rx_request) = cbeam_chan::unbounded::<DecoderRequest>();
         tokio::task::spawn_blocking(move || {
+            let mut state = DecoderState::Working;
             let mut samples = Vec::<CommonSample>::new();
-            let mut audio_spec = None;
-            let mut requests = BinaryHeap::new();
+            let mut pending_requests = BinaryHeap::new();
+            let audio_spec = Self::decode_next_packet(
+                decoder.as_mut(),
+                demuxer.as_mut(),
+                &mut samples,
+                track_id,
+            );
+            let AudioSpec {
+                n_channels,
+                sample_rate,
+            } = match audio_spec {
+                DecoderResult::Ok(audio_spec) => audio_spec,
+                DecoderResult::Error(e) => {
+                    error!("{}", e);
+                    return;
+                }
+                _ => {
+                    error!("empty file");
+                    return;
+                }
+            };
+
             loop {
-                match rx_request.try_recv() {
-                    Ok(request) => requests.push(request),
-                    Err(TryRecvError::Disconnected) => break,
-                    _ => (),
-                }
-                if let Some(AudioSpec {
-                    n_channels,
-                    sample_rate,
-                }) = audio_spec
-                {
-                    // TODO: rewrite with .pop_if() once it stabilizes
-                    while let Some(DecoderRequest { end, .. }) = requests.peek()
-                        && *end < samples.len()
-                    {
-                        let DecoderRequest {
-                            start,
-                            end,
-                            respond_to,
-                        } = requests.pop().unwrap();
-                        let requested_samples = samples[start..=end].to_vec();
-                        let chunk =
-                            AudioChunk::new(requested_samples, n_channels, sample_rate, false);
-                        let _ = respond_to.send(chunk);
-                    }
-                }
-                match demuxer.next_packet() {
-                    Ok(packet) if packet.track_id() == track_id => match decoder.decode(&packet) {
-                        Ok(data) => {
-                            let spec = data.spec();
-                            if audio_spec.is_none() {
-                                audio_spec =
-                                    Some(AudioSpec::new(spec.channels.count(), spec.rate as usize));
-                            }
-                            let mut buf = SampleBuffer::new(data.capacity() as u64, *spec);
-                            buf.copy_interleaved_ref(data);
-                            samples.extend(buf.samples());
+                match state {
+                    DecoderState::Working => {
+                        if let Ok(request) = rx_request.try_recv() {
+                            pending_requests.push(request);
                         }
-                        Err(e) => match e {
-                            SymphoniaError::ResetRequired
-                            | SymphoniaError::DecodeError(_)
-                            | SymphoniaError::IoError(_) => (),
-                            _ => {
+                        match Self::decode_next_packet(
+                            decoder.as_mut(),
+                            demuxer.as_mut(),
+                            &mut samples,
+                            track_id,
+                        ) {
+                            DecoderResult::Error(e) => {
                                 error!("{}", e);
                                 break;
                             }
-                        },
-                    },
-                    Err(e) => match e {
-                        SymphoniaError::ResetRequired => {
-                            decoder.reset();
+                            DecoderResult::SongOver => {
+                                state = DecoderState::Done;
+                            }
+                            _ => (),
                         }
-                        SymphoniaError::IoError(e)
-                            if matches!(e.kind(), io::ErrorKind::UnexpectedEof) =>
+                        // TODO: rewrite with .pop_if() once it stabilizes
+                        while let Some(DecoderRequest { end, .. }) = pending_requests.peek()
+                            && *end < samples.len()
                         {
-                            // entire song decoded
-                            break;
+                            let DecoderRequest {
+                                start,
+                                end,
+                                respond_to,
+                            } = pending_requests.pop().unwrap();
+                            let requested_samples = samples[start..=end].to_vec();
+                            let chunk =
+                                AudioChunk::new(requested_samples, n_channels, sample_rate, false);
+                            let _ = respond_to.send(chunk);
                         }
-                        _ => {
-                            error!("{}", e);
-                            break;
+                    }
+                    DecoderState::Done => match rx_request.recv() {
+                        Ok(DecoderRequest {
+                            start,
+                            end,
+                            respond_to,
+                        }) => {
+                            let _ = respond_to.send(AudioChunk::new(
+                                samples[start..=end.min(samples.len() - 1)].to_vec(),
+                                n_channels,
+                                sample_rate,
+                                end >= samples.len(),
+                            ));
                         }
+                        Err(_) => break,
                     },
-                    _ => (),
                 }
-            }
-            if let Some(AudioSpec {
-                n_channels,
-                sample_rate,
-            }) = audio_spec
-            {
-                while let Some(DecoderRequest {
-                    start,
-                    end,
-                    respond_to,
-                }) = requests.pop()
-                {
-                    let end = end.min(samples.len() - 1);
-                    let requested_samples = samples[start..=end].to_vec();
-                    let chunk = AudioChunk::new(
-                        requested_samples,
-                        n_channels,
-                        sample_rate,
-                        end >= samples.len(),
-                    );
-                    let _ = respond_to.send(chunk);
-                }
-
-                let entire_song = AudioChunk::new(samples, n_channels, sample_rate, false);
-                let mut cache = cache.write().unwrap();
-                cache.push(uri, entire_song);
             }
         });
 
         Ok(tx_request)
+    }
+
+    fn decode_next_packet(
+        decoder: &mut dyn SymphoniaDecoder,
+        demuxer: &mut dyn FormatReader,
+        samples: &mut Vec<CommonSample>,
+        track_id: u32,
+    ) -> DecoderResult {
+        match demuxer.next_packet() {
+            Ok(packet) if packet.track_id() == track_id => match decoder.decode(&packet) {
+                Ok(data) => {
+                    let spec = data.spec();
+                    let audio_spec = AudioSpec::new(spec.channels.count(), spec.rate as usize);
+                    let mut buf = SampleBuffer::new(data.capacity() as u64, *spec);
+                    buf.copy_interleaved_ref(data);
+                    samples.extend(buf.samples());
+
+                    DecoderResult::Ok(audio_spec)
+                }
+                Err(e) => match e {
+                    SymphoniaError::ResetRequired
+                    | SymphoniaError::DecodeError(_)
+                    | SymphoniaError::IoError(_) => DecoderResult::SkipPacket,
+                    _ => DecoderResult::Error(anyhow!(e)),
+                },
+            },
+            Err(e) => match e {
+                SymphoniaError::ResetRequired => {
+                    decoder.reset();
+                    DecoderResult::SkipPacket
+                }
+                SymphoniaError::IoError(e) if matches!(e.kind(), io::ErrorKind::UnexpectedEof) => {
+                    // entire song decoded
+                    DecoderResult::SongOver
+                }
+                _ => DecoderResult::Error(anyhow!(e)),
+            },
+            _ => DecoderResult::SkipPacket,
+        }
     }
 }
