@@ -16,3 +16,17 @@ pub fn setup_logging(log_file: Option<&Path>) -> Result<()> {
 
     Ok(())
 }
+
+/// turns the uri into a valid D-Bus object path
+pub fn uri_to_track_id(uri: impl AsRef<Path>) -> String {
+    let mut safe_uri = String::from("/foksal/");
+    for c in uri.as_ref().to_string_lossy().as_bytes() {
+        if c.is_ascii_alphabetic() || c.is_ascii_digit() || *c == b'_' {
+            safe_uri.push(*c as char);
+        } else {
+            safe_uri.push('_');
+        }
+    }
+
+    safe_uri
+}

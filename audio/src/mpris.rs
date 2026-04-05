@@ -1,9 +1,10 @@
 use mpris_server::{
     LocalPlayerInterface, LocalRootInterface, LocalServer, LoopStatus, Metadata, PlaybackRate,
     PlaybackStatus, Time, TrackId, Volume,
+    builder::MetadataBuilder,
     zbus::{Result, fdo},
 };
-use std::thread;
+use std::{path::PathBuf, thread};
 use tokio::{
     runtime::Runtime,
     sync::{mpsc as tokio_chan, oneshot},
@@ -11,7 +12,28 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
-use libfoksalcommon::net::request::{LocalRequestKind, MprisRequest, RawPlayerRequest};
+use libfoksalcommon::{
+    net::{
+        request::{
+            LocalRequestKind, MprisRequest, RawAddAndPlayArgs, RawDbRequest, RawMetadataArgs,
+            RawPlayerRequest, RawSeekArgs, RawVolumeSetArgs,
+        },
+        response::Response,
+    },
+    utils,
+};
+
+const MPRIS_TAGS: [&str; 9] = [
+    "album",
+    "albumartist",
+    "artist",
+    "composer",
+    "discnumber",
+    "duration",
+    "genre",
+    "tracktitle",
+    "tracknumber",
+];
 
 pub struct FoksalMpris {
     tx_request: tokio_chan::UnboundedSender<MprisRequest>,
@@ -27,6 +49,19 @@ impl FoksalMpris {
             tx_request,
             c_token,
         }
+    }
+
+    async fn player_state(&self) -> fdo::Result<Response> {
+        let (respond_to, rx) = oneshot::channel();
+        let _ = self.tx_request.send(MprisRequest {
+            kind: LocalRequestKind::PlayerRequest(RawPlayerRequest::State),
+            respond_to,
+        });
+        let resp = rx
+            .await
+            .map_err(|_| fdo::Error::Failed("player_state".into()))?;
+
+        Ok(resp)
     }
 }
 
@@ -148,28 +183,47 @@ impl LocalPlayerInterface for FoksalMpris {
     }
 
     async fn seek(&self, offset: Time) -> fdo::Result<()> {
-        todo!()
-    }
-
-    async fn set_position(&self, track_id: TrackId, position: Time) -> fdo::Result<()> {
-        todo!()
-    }
-
-    async fn open_uri(&self, uri: String) -> fdo::Result<()> {
-        todo!()
-    }
-
-    async fn playback_status(&self) -> fdo::Result<PlaybackStatus> {
-        let (respond_to, rx) = oneshot::channel();
+        let (respond_to, _) = oneshot::channel();
+        let args = RawSeekArgs {
+            seconds: offset.as_secs() as isize,
+        };
         let _ = self.tx_request.send(MprisRequest {
-            kind: LocalRequestKind::PlayerRequest(RawPlayerRequest::State),
+            kind: LocalRequestKind::PlayerRequest(RawPlayerRequest::Seek(args)),
             respond_to,
         });
 
-        let resp = rx
-            .await
-            .map_err(|_| fdo::Error::Failed("playback_status".into()))?;
-        let Some(playback_status) = resp.inner()["playback_state"].as_str() else {
+        Ok(())
+    }
+
+    async fn set_position(&self, track_id: TrackId, position: Time) -> fdo::Result<()> {
+        let player_state = self.player_state().await?;
+        let Some(uri) = player_state.inner()["current_song"].as_str() else {
+            return Ok(());
+        };
+        if utils::uri_to_track_id(uri) != track_id.as_str() {
+            return Ok(());
+        }
+        // TODO: implement GoTo sink request
+
+        Ok(())
+    }
+
+    async fn open_uri(&self, uri: String) -> fdo::Result<()> {
+        let (respond_to, _) = oneshot::channel();
+        let args = RawAddAndPlayArgs {
+            uris: vec![PathBuf::from(uri)],
+        };
+        let _ = self.tx_request.send(MprisRequest {
+            kind: LocalRequestKind::PlayerRequest(RawPlayerRequest::AddAndPlay(args)),
+            respond_to,
+        });
+
+        Ok(())
+    }
+
+    async fn playback_status(&self) -> fdo::Result<PlaybackStatus> {
+        let player_state = self.player_state().await?;
+        let Some(playback_status) = player_state.inner()["playback_state"].as_str() else {
             return Err(fdo::Error::Failed("playback_status deserialization".into()));
         };
         let res = match playback_status {
@@ -183,43 +237,156 @@ impl LocalPlayerInterface for FoksalMpris {
     }
 
     async fn loop_status(&self) -> fdo::Result<LoopStatus> {
-        Ok(LoopStatus::None)
+        let player_state = self.player_state().await?;
+        let Some(queue_mode) = player_state.inner()["queue_mode"].as_str() else {
+            return Err(fdo::Error::Failed("loop_status deserialization".into()));
+        };
+        let res = match queue_mode {
+            "sequential" | "random" => LoopStatus::None,
+            "loop" => LoopStatus::Track,
+            _ => unreachable!(),
+        };
+
+        Ok(res)
     }
 
     async fn set_loop_status(&self, loop_status: LoopStatus) -> Result<()> {
-        todo!()
+        let (respond_to, _) = oneshot::channel();
+        let _ = self.tx_request.send(MprisRequest {
+            kind: LocalRequestKind::PlayerRequest(match loop_status {
+                LoopStatus::Track => RawPlayerRequest::QueueLoop,
+                _ => RawPlayerRequest::QueueSeq,
+            }),
+            respond_to,
+        });
+
+        Ok(())
     }
 
     async fn rate(&self) -> fdo::Result<PlaybackRate> {
         Ok(1.0)
     }
 
-    async fn set_rate(&self, rate: PlaybackRate) -> Result<()> {
-        todo!()
+    async fn set_rate(&self, _: PlaybackRate) -> Result<()> {
+        Ok(())
     }
 
     async fn shuffle(&self) -> fdo::Result<bool> {
-        Ok(false)
+        Ok(true)
     }
 
     async fn set_shuffle(&self, shuffle: bool) -> Result<()> {
-        todo!()
+        let (respond_to, _) = oneshot::channel();
+        let _ = self.tx_request.send(MprisRequest {
+            kind: LocalRequestKind::PlayerRequest(if shuffle {
+                RawPlayerRequest::QueueRandom
+            } else {
+                RawPlayerRequest::QueueSeq
+            }),
+            respond_to,
+        });
+
+        Ok(())
     }
 
     async fn metadata(&self) -> fdo::Result<Metadata> {
-        Ok(Metadata::new())
+        let player_state = self.player_state().await?;
+        let Some(uri) = player_state.inner()["current_song"].as_str() else {
+            let no_track = MetadataBuilder::default().trackid(TrackId::NO_TRACK);
+            return Ok(no_track.build());
+        };
+
+        let uris = vec![PathBuf::from(uri)];
+        let tags: Vec<_> = MPRIS_TAGS.iter().map(|t| t.to_string()).collect();
+        let args = RawMetadataArgs { uris, tags };
+        let (respond_to, rx) = oneshot::channel();
+        let _ = self.tx_request.send(MprisRequest {
+            kind: LocalRequestKind::DbRequest(RawDbRequest::Metadata(args)),
+            respond_to,
+        });
+        let resp = rx
+            .await
+            .map_err(|_| fdo::Error::Failed("metadata".into()))?;
+        let Some(metadata) = resp.inner()["metadata"]
+            .as_array()
+            .and_then(|m| m[0].as_object())
+        else {
+            return Err(fdo::Error::Failed("metadata deserialization".into()));
+        };
+
+        let track_id: TrackId = utils::uri_to_track_id(uri).try_into().unwrap();
+        let album = metadata["album"].as_str();
+        let albumartist = metadata["albumartist"].as_str();
+        let artist = metadata["artist"].as_str();
+        let composer = metadata["composer"].as_str();
+        let discnumber = metadata["discnumber"].as_i64();
+        let duration = metadata["duration"].as_i64();
+        let genre = metadata["genre"].as_str();
+        let tracktitle = metadata["tracktitle"].as_str();
+        let tracknumber = metadata["tracknumber"].as_i64();
+
+        let mut builder = MetadataBuilder::default().trackid(track_id);
+        if let Some(album) = album {
+            builder = builder.album(album);
+        }
+        if let Some(albumartist) = albumartist {
+            builder = builder.album_artist([albumartist].into_iter());
+        }
+        if let Some(artist) = artist {
+            builder = builder.artist([artist].into_iter());
+        }
+        if let Some(composer) = composer {
+            builder = builder.composer([composer].into_iter());
+        }
+        if let Some(discnumber) = discnumber {
+            builder = builder.disc_number(discnumber as i32);
+        }
+        if let Some(duration) = duration {
+            builder = builder.length(Time::from_secs(duration));
+        }
+        if let Some(genre) = genre {
+            builder = builder.genre([genre].into_iter());
+        }
+        if let Some(tracktitle) = tracktitle {
+            builder = builder.title(tracktitle);
+        }
+        if let Some(tracknumber) = tracknumber {
+            builder = builder.track_number(tracknumber as i32)
+        }
+
+        Ok(builder.build())
     }
 
     async fn volume(&self) -> fdo::Result<Volume> {
-        Ok(1.0)
+        let player_state = self.player_state().await?;
+        let Some(volume) = player_state.inner()["volume"].as_i64() else {
+            return Err(fdo::Error::Failed("volume deserialization".into()));
+        };
+        let volume = volume as f64 / 100.0;
+
+        Ok(volume)
     }
 
     async fn set_volume(&self, volume: Volume) -> Result<()> {
-        todo!()
+        let volume = ((volume * 100.0) as u8).clamp(0, 100);
+        let args = RawVolumeSetArgs { volume };
+        let (respond_to, _) = oneshot::channel();
+        let _ = self.tx_request.send(MprisRequest {
+            kind: LocalRequestKind::PlayerRequest(RawPlayerRequest::VolumeSet(args)),
+            respond_to,
+        });
+
+        Ok(())
     }
 
     async fn position(&self) -> fdo::Result<Time> {
-        Ok(Time::from_secs(0))
+        let player_state = self.player_state().await?;
+        let Some(elapsed) = player_state.inner()["elapsed"].as_i64() else {
+            return Err(fdo::Error::Failed("position deserialization".into()));
+        };
+        let elapsed = Time::from_secs(elapsed);
+
+        Ok(elapsed)
     }
 
     async fn minimum_rate(&self) -> fdo::Result<PlaybackRate> {
@@ -269,6 +436,8 @@ pub fn spawn(tx_request: tokio_chan::UnboundedSender<MprisRequest>, c_token: Can
                 }
             };
             server.run().await;
+
+            // TODO: emit events
         });
     });
 }
