@@ -1,18 +1,16 @@
+use anyhow::Result as AnyhowResult;
 use mpris_server::{
-    LocalPlayerInterface, LocalRootInterface, LocalServer, LoopStatus, Metadata, PlaybackRate,
-    PlaybackStatus, Time, TrackId, Volume,
+    LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, Property, RootInterface,
+    Server, Time, TrackId, Volume,
     builder::MetadataBuilder,
-    zbus::{Result, fdo},
+    zbus::{Error as ZbusError, Result, fdo},
 };
 use serde_json::Value;
-use std::{path::PathBuf, thread};
-use tokio::{
-    runtime::Runtime,
-    sync::{mpsc as tokio_chan, oneshot},
-};
+use std::path::PathBuf;
+use tokio::sync::{mpsc as tokio_chan, oneshot};
 use tokio_util::sync::CancellationToken;
-use tracing::error;
 
+use crate::{core::PlayerEvent, queue::QueueMode, sink::PlaybackState};
 use libfoksalcommon::{
     net::{
         request::{
@@ -66,7 +64,7 @@ impl FoksalMpris {
     }
 }
 
-impl LocalRootInterface for FoksalMpris {
+impl RootInterface for FoksalMpris {
     async fn raise(&self) -> fdo::Result<()> {
         Ok(())
     }
@@ -122,7 +120,7 @@ impl LocalRootInterface for FoksalMpris {
     }
 }
 
-impl LocalPlayerInterface for FoksalMpris {
+impl PlayerInterface for FoksalMpris {
     async fn next(&self) -> fdo::Result<()> {
         let (respond_to, _) = oneshot::channel();
         let _ = self.tx_request.send(MprisRequest {
@@ -318,24 +316,11 @@ impl LocalPlayerInterface for FoksalMpris {
         };
 
         let uris = vec![PathBuf::from(uri)];
-        let tags: Vec<_> = MPRIS_TAGS.iter().map(|t| t.to_string()).collect();
-        let args = RawMetadataArgs { uris, tags };
-        let (respond_to, rx) = oneshot::channel();
-        let _ = self.tx_request.send(MprisRequest {
-            kind: LocalRequestKind::DbRequest(RawDbRequest::Metadata(args)),
-            respond_to,
-        });
-        let resp = rx
-            .await
-            .map_err(|_| fdo::Error::Failed("metadata fetch".into()))?;
-        let Some(metadata) = resp.inner()["metadata"].as_array().and_then(|m| m.first()) else {
-            return Err(fdo::Error::Failed("metadata deserialization".into()));
-        };
-        let track_id: TrackId = utils::uri_to_track_id(uri, id as usize)
-            .try_into()
-            .map_err(|_| fdo::Error::Failed("invalid track id".into()))?;
-
-        convert_metadata(track_id, metadata)
+        let ids = vec![id as usize];
+        match fetch_metadata(&self.tx_request, uris, ids).await {
+            Ok(mut metadata) => Ok(metadata.swap_remove(0)),
+            Err(e) => Err(e),
+        }
     }
 
     async fn volume(&self) -> fdo::Result<Volume> {
@@ -403,32 +388,94 @@ impl LocalPlayerInterface for FoksalMpris {
     }
 }
 
-pub fn spawn(tx_request: tokio_chan::UnboundedSender<MprisRequest>, c_token: CancellationToken) {
-    let foksal_mpris = FoksalMpris::new(tx_request, c_token);
-    thread::spawn(move || {
-        let rt = Runtime::new().expect("falied to create tokio runtime for MPRIS");
-        rt.block_on(async move {
-            let server = match LocalServer::new("org.mpris.MediaPlayer2.foksal", foksal_mpris).await
-            {
-                Ok(server) => server,
-                Err(e) => {
-                    error!("failed to start MPRIS server: {}", e);
-                    return;
-                }
-            };
-            server.run().await;
+pub async fn spawn(
+    tx_request: tokio_chan::UnboundedSender<MprisRequest>,
+    mut rx_event: tokio_chan::UnboundedReceiver<PlayerEvent>,
+    c_token: CancellationToken,
+) -> AnyhowResult<()> {
+    let tx_request_clone = tx_request.clone();
+    let foksal_mpris = FoksalMpris::new(tx_request_clone, c_token);
+    let server = Server::new(
+        format!("org.mpris.MediaPlayer2.foksal{}", std::process::id()).as_str(),
+        foksal_mpris,
+    )
+    .await?;
 
-            // TODO: emit events
-            //  - on playback status change
-            //  - on loop status change
-            //  - on shuffle status change
-            //  - on song change (new metadata)
-            //  - on volume change
-        });
+    tokio::spawn(async move {
+        while let Some(event) = rx_event.recv().await {
+            match event {
+                PlayerEvent::QueueMode { mode } => match mode {
+                    QueueMode::Random => {
+                        let _ = server
+                            .properties_changed([
+                                Property::Shuffle(true),
+                                Property::LoopStatus(LoopStatus::None),
+                            ])
+                            .await;
+                    }
+                    QueueMode::Loop => {
+                        let _ = server
+                            .properties_changed([
+                                Property::Shuffle(false),
+                                Property::LoopStatus(LoopStatus::Track),
+                            ])
+                            .await;
+                    }
+                    QueueMode::Sequential => {
+                        let _ = server
+                            .properties_changed([
+                                Property::Shuffle(false),
+                                Property::LoopStatus(LoopStatus::None),
+                            ])
+                            .await;
+                    }
+                },
+                PlayerEvent::PlaybackState { state } => match state {
+                    PlaybackState::Stopped => {
+                        let _ = server
+                            .properties_changed([Property::PlaybackStatus(PlaybackStatus::Stopped)])
+                            .await;
+                    }
+                    PlaybackState::Paused => {
+                        let _ = server
+                            .properties_changed([Property::PlaybackStatus(PlaybackStatus::Paused)])
+                            .await;
+                    }
+                    _ => {
+                        let _ = server
+                            .properties_changed([Property::PlaybackStatus(PlaybackStatus::Playing)])
+                            .await;
+                    }
+                },
+                PlayerEvent::Volume { volume } => {
+                    let volume = (volume as f64) / 100.0;
+                    let _ = server.properties_changed([Property::Volume(volume)]).await;
+                }
+                PlayerEvent::CurrentSong { uri, id } => {
+                    if let Some(metadata) = fetch_metadata(&tx_request, vec![uri], vec![id])
+                        .await
+                        .ok()
+                        .and_then(|m| m.first().cloned())
+                    {
+                        let _ = server
+                            .properties_changed([Property::Metadata(metadata)])
+                            .await;
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
     });
+
+    Ok(())
 }
 
-/// convert a metadata map from json to mpris format
+// TODO:
+// - split this huge file
+// - impl TrackList interface
+// - add mpris to proxy
+
+/// convert a metadata map from json to the format expected by mpris
 fn convert_metadata(track_id: TrackId, json: &Value) -> fdo::Result<Metadata> {
     let metadata = json
         .as_object()
@@ -473,4 +520,40 @@ fn convert_metadata(track_id: TrackId, json: &Value) -> fdo::Result<Metadata> {
     }
 
     Ok(builder.build())
+}
+
+async fn fetch_metadata(
+    tx_request: &tokio_chan::UnboundedSender<MprisRequest>,
+    uris: Vec<PathBuf>,
+    ids: Vec<usize>,
+) -> fdo::Result<Vec<Metadata>> {
+    let tags: Vec<_> = MPRIS_TAGS.iter().map(|t| t.to_string()).collect();
+    let args = RawMetadataArgs {
+        uris: uris.clone(),
+        tags,
+    };
+    let (respond_to, rx) = oneshot::channel();
+    let _ = tx_request.send(MprisRequest {
+        kind: LocalRequestKind::DbRequest(RawDbRequest::Metadata(args)),
+        respond_to,
+    });
+    let resp = rx
+        .await
+        .map_err(|_| fdo::Error::Failed("metadata fetch".into()))?;
+    let Some(metadata) = resp.inner()["metadata"].as_array() else {
+        return Err(fdo::Error::Failed("metadata deserialization".into()));
+    };
+    let res: Result<Vec<_>> = metadata
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let track_id: TrackId = utils::uri_to_track_id(uris[i].as_path(), ids[i])
+                .try_into()
+                .map_err(|_| fdo::Error::Failed("invalid track id".into()))?;
+
+            convert_metadata(track_id, item).map_err(|e| ZbusError::FDO(Box::new(e)))
+        })
+        .collect();
+
+    Ok(res?)
 }

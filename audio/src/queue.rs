@@ -96,6 +96,16 @@ impl Queue {
             }))
     }
 
+    pub fn get_id(&self, pos: usize) -> Result<usize> {
+        self.ids
+            .get(pos)
+            .copied()
+            .ok_or(anyhow!(QueueError::OutOfBounds {
+                index: pos,
+                len: self.list.len()
+            }))
+    }
+
     pub fn insert(&mut self, uris: &[impl AsRef<Path> + Into<PathBuf>], pos: usize) -> Result<()> {
         let len = self.list.len();
         ensure!(pos <= len, QueueError::OutOfBounds { index: pos, len });

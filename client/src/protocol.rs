@@ -192,7 +192,7 @@ pub enum Event {
     /// The queue playback mode changed.
     QueueMode { mode: QueueMode },
     /// A new song started playing.
-    CurrentSong { uri: PathBuf },
+    CurrentSong { uri: PathBuf, id: usize },
     /// Playback state changed.
     PlaybackState { state: PlaybackState },
     /// Volume changed.
@@ -248,10 +248,10 @@ mod tests {
     }
 
     #[test]
-    fn serialize_seek() {
-        let req = Request::Seek { seconds: -10 };
+    fn serialize_seek_by() {
+        let req = Request::SeekBy { seconds: -10 };
         let json = serde_json::to_value(&req).unwrap();
-        assert_eq!(json["kind"], "seek");
+        assert_eq!(json["kind"], "seek_by");
         assert_eq!(json["seconds"], -10);
     }
 

@@ -239,6 +239,7 @@ pub fn spawn(config: ParsedLocalConfig, c_token: CancellationToken) -> JoinHandl
         let (tx_player_request, rx_player_request) = tokio_chan::unbounded_channel();
         let (tx_file_request, rx_file_request) = tokio_chan::unbounded_channel();
         let (tx_mpris_request, rx_mpris_request) = tokio_chan::unbounded_channel();
+        let (tx_mpris_event, rx_mpris_event) = tokio_chan::unbounded_channel();
         let (tx_sink_response, rx_sink_response) = tokio_chan::unbounded_channel();
         let (tx_sink_request, rx_sink_request) = cbeam_chan::unbounded();
         let (tx_async_error, rx_async_error) = broadcast::channel(1);
@@ -260,7 +261,12 @@ pub fn spawn(config: ParsedLocalConfig, c_token: CancellationToken) -> JoinHandl
             n_jobs,
         )?;
 
-        player_controller::spawn(tx_sink_request, rx_player_request, rx_sink_response);
+        player_controller::spawn(
+            tx_sink_request,
+            tx_mpris_event,
+            rx_player_request,
+            rx_sink_response,
+        );
         sink::spawn_blocking(
             audio_backend,
             tx_file_request,
@@ -268,7 +274,7 @@ pub fn spawn(config: ParsedLocalConfig, c_token: CancellationToken) -> JoinHandl
             tx_sink_response,
             tx_async_error,
         )?;
-        mpris::spawn(tx_mpris_request, c_token.clone());
+        mpris::spawn(tx_mpris_request, rx_mpris_event, c_token.clone()).await?;
 
         let res = tokio::select! {
             res = run(port, tx_db_request, tx_player_request, rx_mpris_request, rx_async_error, c_token.clone()) => res,
