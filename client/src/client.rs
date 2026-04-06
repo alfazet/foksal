@@ -3,6 +3,7 @@ use futures_util::{
     SinkExt, StreamExt,
     stream::{SplitSink, SplitStream},
 };
+use serde_json::Value;
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -247,6 +248,7 @@ impl FoksalClient {
         filters: Option<Vec<Filter>>,
         group_by: Option<Vec<TagKey>>,
     ) -> Result<Vec<SelectGroup>, FoksalError> {
+        let filters = filters.map(|f| f.into_iter().map(RawFilter::from).collect());
         let group_by = group_by.map(|g| g.into_iter().map(|t| t.to_string()).collect());
         let response = self
             .send_with_response(Request::Select { filters, group_by })
@@ -273,14 +275,14 @@ impl FoksalClient {
     /// sorting).
     pub async fn unique(
         &mut self,
-        tag: String,
+        tag: TagKey,
         group_by: Option<Vec<TagKey>>,
         sort: Option<SortOrder>,
     ) -> Result<Vec<UniqueGroup>, FoksalError> {
         let group_by = group_by.map(|g| g.into_iter().map(|t| t.to_string()).collect());
         let response = self
             .send_with_response(Request::Unique {
-                tag,
+                tag: tag.to_string(),
                 group_by,
                 sort,
             })
@@ -345,7 +347,7 @@ impl FoksalClient {
     async fn send_with_response(&mut self, request: Request) -> Result<RawResponse, FoksalError> {
         let token = Uuid::new_v4().to_string();
         let mut value = serde_json::to_value(&request)?;
-        value["token"] = serde_json::Value::String(token.clone());
+        value["token"] = Value::String(token.clone());
         let content = serde_json::to_vec(&value)?;
         let (tx, rx) = oneshot::channel();
         self.pending.lock().unwrap().insert(token, tx);

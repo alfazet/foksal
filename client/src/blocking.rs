@@ -201,8 +201,9 @@ impl BlockingFoksalClient {
     pub fn select(
         &mut self,
         filters: Option<Vec<Filter>>,
-        group_by: Option<Vec<String>>,
+        group_by: Option<Vec<TagKey>>,
     ) -> Result<Vec<SelectGroup>, FoksalError> {
+        let filters = filters.map(|f| f.into_iter().map(RawFilter::from).collect());
         let group_by = group_by.map(|g| g.into_iter().map(|t| t.to_string()).collect());
         let response = self.send_with_response(Request::Select { filters, group_by })?;
         let select_groups = response.into_select_groups()?;
@@ -225,13 +226,13 @@ impl BlockingFoksalClient {
 
     pub fn unique(
         &mut self,
-        tag: String,
-        group_by: Option<Vec<String>>,
+        tag: TagKey,
+        group_by: Option<Vec<TagKey>>,
         sort: Option<SortOrder>,
     ) -> Result<Vec<UniqueGroup>, FoksalError> {
         let group_by = group_by.map(|g| g.into_iter().map(|t| t.to_string()).collect());
         let response = self.send_with_response(Request::Unique {
-            tag,
+            tag: tag.to_string(),
             group_by,
             sort,
         })?;

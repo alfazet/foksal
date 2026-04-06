@@ -28,7 +28,7 @@ pub enum QueueMode {
 }
 
 /// Subscription targets for events.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SubscriptionTarget {
     Queue,
@@ -37,7 +37,7 @@ pub enum SubscriptionTarget {
 }
 
 /// Sorting order for `unique` requests.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SortOrder {
     #[serde(alias = "asc")]
@@ -47,14 +47,18 @@ pub enum SortOrder {
 }
 
 /// Regex filter used in `select` requests.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Filter {
+    pub tag: TagKey,
+    pub regex: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct RawFilter {
     pub tag: String,
     pub regex: String,
 }
 
 /// Full player state.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PlayerState {
     pub current_song: Option<PathBuf>,
     pub current_song_id: Option<usize>,
@@ -133,6 +137,15 @@ pub(crate) struct RawUniqueGroup {
     pub unique: Vec<Value>,
     #[serde(flatten)]
     pub tags: HashMap<String, Value>,
+}
+
+impl From<Filter> for RawFilter {
+    fn from(f: Filter) -> Self {
+        Self {
+            tag: f.tag.to_string(),
+            regex: f.regex,
+        }
+    }
 }
 
 impl TryFrom<&str> for TagKey {

@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use crate::error::FoksalError;
 use crate::model::{
-    Filter, PlaybackState, PlayerState, QueueMode, RawSelectGroup, RawSongMetadata, RawUniqueGroup,
-    SortOrder, SubscriptionTarget,
+    PlaybackState, PlayerState, QueueMode, RawFilter, RawSelectGroup, RawSongMetadata,
+    RawUniqueGroup, SortOrder, SubscriptionTarget,
 };
 
 /// A request sent to foksal.
@@ -60,7 +60,7 @@ pub(crate) enum Request {
     },
     Select {
         #[serde(skip_serializing_if = "Option::is_none")]
-        filters: Option<Vec<Filter>>,
+        filters: Option<Vec<RawFilter>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         group_by: Option<Vec<String>>,
     },
@@ -270,7 +270,7 @@ mod tests {
     #[test]
     fn serialize_select_request() {
         let req = Request::Select {
-            filters: Some(vec![Filter {
+            filters: Some(vec![RawFilter {
                 tag: "artist".into(),
                 regex: "^Foo Bar$".into(),
             }]),
