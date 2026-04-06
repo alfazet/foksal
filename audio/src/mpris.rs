@@ -252,7 +252,7 @@ impl PlayerInterface for FoksalMpris {
             return Err(fdo::Error::Failed("loop_status deserialization".into()));
         };
         let res = match queue_mode {
-            "sequential" | "random" => LoopStatus::None,
+            "sequential" | "random" | "single" => LoopStatus::None,
             "loop" => LoopStatus::Track,
             _ => unreachable!(),
         };
@@ -405,10 +405,10 @@ pub async fn spawn(
         while let Some(event) = rx_event.recv().await {
             match event {
                 PlayerEvent::QueueMode { mode } => match mode {
-                    QueueMode::Random => {
+                    QueueMode::Sequential => {
                         let _ = server
                             .properties_changed([
-                                Property::Shuffle(true),
+                                Property::Shuffle(false),
                                 Property::LoopStatus(LoopStatus::None),
                             ])
                             .await;
@@ -421,10 +421,10 @@ pub async fn spawn(
                             ])
                             .await;
                     }
-                    QueueMode::Sequential => {
+                    QueueMode::Random | QueueMode::Single => {
                         let _ = server
                             .properties_changed([
-                                Property::Shuffle(false),
+                                Property::Shuffle(true),
                                 Property::LoopStatus(LoopStatus::None),
                             ])
                             .await;

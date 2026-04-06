@@ -39,10 +39,12 @@ enum Command {
     Prev,
     /// set playback to sequential mode
     Sequential,
-    /// set playback to random mode
-    Random,
     /// set playback to loop mode
     Loop,
+    /// set playback to random mode
+    Random,
+    /// set playback to single mode
+    Single,
     /// change volume by delta
     VolumeChange { delta: i8 },
     /// set volume
@@ -164,11 +166,14 @@ fn send_request(client: &mut BlockingFoksalClient, command: Command) -> Result<(
         Command::Sequential => {
             client.queue_seq()?;
         }
+        Command::Loop => {
+            client.queue_loop()?;
+        }
         Command::Random => {
             client.queue_random()?;
         }
-        Command::Loop => {
-            client.queue_loop()?;
+        Command::Single => {
+            client.queue_single()?;
         }
         Command::VolumeChange { delta } => {
             client.volume_change(delta)?;

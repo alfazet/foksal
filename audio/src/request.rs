@@ -315,6 +315,11 @@ impl Player {
         Response::new_ok()
     }
 
+    pub fn req_queue_single(&mut self) -> Response {
+        self.queue_single();
+        Response::new_ok()
+    }
+
     pub fn req_queue_clear(&mut self) -> Response {
         self.queue_clear();
         Response::new_ok()

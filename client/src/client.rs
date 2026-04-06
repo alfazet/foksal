@@ -186,14 +186,19 @@ impl FoksalClient {
         self.send_no_response(Request::QueueSeq).await
     }
 
+    /// Set the queue to loop playback mode (see [`QueueMode`]).
+    pub async fn queue_loop(&mut self) -> Result<(), FoksalError> {
+        self.send_no_response(Request::QueueLoop).await
+    }
+
     /// Set the queue to random playback mode (see [`QueueMode`]).
     pub async fn queue_random(&mut self) -> Result<(), FoksalError> {
         self.send_no_response(Request::QueueRandom).await
     }
 
-    /// Set the queue to loop playback mode (see [`QueueMode`]).
-    pub async fn queue_loop(&mut self) -> Result<(), FoksalError> {
-        self.send_no_response(Request::QueueLoop).await
+    /// Set the queue to single playback mode (see [`QueueMode`]).
+    pub async fn queue_single(&mut self) -> Result<(), FoksalError> {
+        self.send_no_response(Request::QueueSingle).await
     }
 
     /// Fetch the full current player state (see [`PlayerState`]).

@@ -20,6 +20,7 @@ pub enum QueueMode {
     Sequential,
     Random,
     Loop,
+    Single,
 }
 
 #[derive(Debug, Default)]
@@ -195,6 +196,10 @@ impl Queue {
         self.reinit_available(false);
     }
 
+    pub fn set_mode_single(&mut self) {
+        self.mode = QueueMode::Single;
+    }
+
     pub fn move_to(&mut self, pos: usize) -> Result<()> {
         ensure!(
             pos < self.list.len(),
@@ -211,8 +216,9 @@ impl Queue {
     pub fn move_to_next(&mut self) {
         match self.mode {
             QueueMode::Sequential => self.move_to_next_seq(),
-            QueueMode::Random => self.move_to_next_random(),
             QueueMode::Loop => self.move_to_next_loop(),
+            QueueMode::Random => self.move_to_next_random(),
+            QueueMode::Single => self.move_to_next_single(),
         }
     }
 
@@ -248,6 +254,12 @@ impl Queue {
         }
     }
 
+    fn move_to_next_loop(&mut self) {
+        if self.pos.is_none() {
+            self.pos = if self.list.is_empty() { None } else { Some(0) };
+        }
+    }
+
     fn move_to_next_random(&mut self) {
         if self.list.is_empty() {
             self.pos = None;
@@ -265,9 +277,10 @@ impl Queue {
         self.pos = self.list.iter().position(|uri| uri == &random_uri);
     }
 
-    fn move_to_next_loop(&mut self) {
-        if self.pos.is_none() {
-            self.pos = if self.list.is_empty() { None } else { Some(0) };
+    fn move_to_next_single(&mut self) {
+        match self.pos {
+            Some(_) => self.pos = None,
+            None => self.pos = if self.list.is_empty() { None } else { Some(0) },
         }
     }
 

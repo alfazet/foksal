@@ -49,8 +49,9 @@ pub(crate) enum Request {
         seconds: u64,
     },
     QueueSeq,
-    QueueRandom,
     QueueLoop,
+    QueueRandom,
+    QueueSingle,
     QueueClear,
     State,
     Metadata {

@@ -97,6 +97,7 @@ async fn run(
                         RawPlayerRequest::QueueSeq => player.req_queue_seq(),
                         RawPlayerRequest::QueueLoop => player.req_queue_loop(),
                         RawPlayerRequest::QueueRandom => player.req_queue_random(),
+                        RawPlayerRequest::QueueSingle => player.req_queue_single(),
                         RawPlayerRequest::QueueClear => player.req_queue_clear(),
                         RawPlayerRequest::Subscribe(_) | RawPlayerRequest::Unsubscribe(_) => unreachable!(),
                     },

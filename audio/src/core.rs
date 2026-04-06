@@ -217,6 +217,11 @@ impl Player {
         self.notify_queue_mode();
     }
 
+    pub fn queue_single(&mut self) {
+        self.queue.set_mode_single();
+        self.notify_queue_mode();
+    }
+
     pub fn queue_clear(&mut self) {
         self.queue.clear();
         let _ = self.tx_sink_request.send(SinkRequest::Stop);
