@@ -1,13 +1,6 @@
 use anyhow::{Result, anyhow};
 use crossbeam_channel as cbeam_chan;
 use futures_util::{SinkExt, StreamExt};
-use libfoksalcommon::net::{
-    request::{
-        LocalRequest, LocalRequestKind, RawDbRequest, RawPlayerRequest, SubscribeArgs,
-        UnsubscribeArgs,
-    },
-    response::{EventNotif, Response},
-};
 use std::net::SocketAddr;
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -23,9 +16,16 @@ use tracing::error;
 
 use crate::config::ParsedLocalConfig;
 use libfoksalaudio::{
-    player_controller,
+    mpris, player_controller,
     request::{PlayerRequest, PlayerRequestKind},
     sink::{self, SinkError},
+};
+use libfoksalcommon::net::{
+    request::{
+        LocalRequest, LocalRequestKind, MprisRequest, RawDbRequest, RawPlayerRequest,
+        SubscribeArgs, UnsubscribeArgs,
+    },
+    response::{EventNotif, Response},
 };
 use libfoksaldb::{
     db_controller,
@@ -166,13 +166,53 @@ async fn handle_client(
     res
 }
 
+async fn handle_mpris(
+    tx_db_request: tokio_chan::UnboundedSender<DbRequest>,
+    tx_player_request: tokio_chan::UnboundedSender<PlayerRequest>,
+    mut rx_mpris_request: tokio_chan::UnboundedReceiver<MprisRequest>,
+    c_token: CancellationToken,
+) -> Result<()> {
+    loop {
+        tokio::select! {
+            Some(MprisRequest { kind, respond_to }) = rx_mpris_request.recv() => {
+                match kind {
+                    LocalRequestKind::DbRequest(raw_request) => {
+                        let _ = tx_db_request.send(DbRequest::new(DbRequestKind::Raw(raw_request), respond_to));
+                    }
+                    LocalRequestKind::PlayerRequest(raw_request) => {
+                        let _ = tx_player_request.send(PlayerRequest::new(PlayerRequestKind::Raw(raw_request), respond_to));
+                    }
+                }
+            }
+            _ = c_token.cancelled() => break Ok(()),
+        }
+    }
+}
+
 async fn run(
     port: u16,
     tx_db_request: tokio_chan::UnboundedSender<DbRequest>,
     tx_player_request: tokio_chan::UnboundedSender<PlayerRequest>,
+    rx_mpris_request: tokio_chan::UnboundedReceiver<MprisRequest>,
     rx_async_error: broadcast::Receiver<SinkError>,
     c_token: CancellationToken,
 ) -> Result<()> {
+    let tx_db_request_mpris = tx_db_request.clone();
+    let tx_player_request_mpris = tx_player_request.clone();
+    let c_token_clone = c_token.clone();
+    tokio::spawn(async move {
+        let res = handle_mpris(
+            tx_db_request_mpris,
+            tx_player_request_mpris,
+            rx_mpris_request,
+            c_token_clone,
+        )
+        .await;
+        if let Err(e) = res {
+            error!("MPRIS handler error ({})", e);
+        }
+    });
+
     let listener = TcpListener::bind(format!("localhost:{}", port)).await?;
     loop {
         tokio::select! {
@@ -198,6 +238,8 @@ pub fn spawn(config: ParsedLocalConfig, c_token: CancellationToken) -> JoinHandl
         let (tx_db_request, rx_db_request) = tokio_chan::unbounded_channel();
         let (tx_player_request, rx_player_request) = tokio_chan::unbounded_channel();
         let (tx_file_request, rx_file_request) = tokio_chan::unbounded_channel();
+        let (tx_mpris_request, rx_mpris_request) = tokio_chan::unbounded_channel();
+        let (tx_mpris_event, rx_mpris_event) = tokio_chan::unbounded_channel();
         let (tx_sink_response, rx_sink_response) = tokio_chan::unbounded_channel();
         let (tx_sink_request, rx_sink_request) = cbeam_chan::unbounded();
         let (tx_async_error, rx_async_error) = broadcast::channel(1);
@@ -218,7 +260,13 @@ pub fn spawn(config: ParsedLocalConfig, c_token: CancellationToken) -> JoinHandl
             rx_file_request,
             n_jobs,
         )?;
-        player_controller::spawn(tx_sink_request, rx_player_request, rx_sink_response);
+
+        player_controller::spawn(
+            tx_sink_request,
+            tx_mpris_event,
+            rx_player_request,
+            rx_sink_response,
+        );
         sink::spawn_blocking(
             audio_backend,
             tx_file_request,
@@ -226,9 +274,10 @@ pub fn spawn(config: ParsedLocalConfig, c_token: CancellationToken) -> JoinHandl
             tx_sink_response,
             tx_async_error,
         )?;
+        mpris::spawn(tx_mpris_request, rx_mpris_event, c_token.clone()).await?;
 
         let res = tokio::select! {
-            res = run(port, tx_db_request, tx_player_request, rx_async_error, c_token.clone()) => res,
+            res = run(port, tx_db_request, tx_player_request, rx_mpris_request, rx_async_error, c_token.clone()) => res,
             _ = c_token.cancelled() => Ok(()),
         };
         c_token.cancel();

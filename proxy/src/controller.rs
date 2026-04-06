@@ -1,18 +1,6 @@
 use anyhow::{Result, anyhow};
 use crossbeam_channel as cbeam_chan;
 use futures_util::{SinkExt, StreamExt};
-use libfoksalaudio::{
-    player_controller,
-    request::{PlayerRequest, PlayerRequestKind},
-    sink::{self, SinkError},
-};
-use libfoksalcommon::net::{
-    request::{
-        FileRequest, LocalRequest, LocalRequestKind, RawPlayerRequest, RemoteRequest,
-        SubscribeArgs, UnsubscribeArgs,
-    },
-    response::{EventNotif, RemoteResponse, RemoteResponseInner, Response},
-};
 use std::{
     collections::{HashMap, VecDeque},
     net::SocketAddr,
@@ -36,6 +24,18 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, warn};
 
 use crate::config::ParsedProxyConfig;
+use libfoksalaudio::{
+    player_controller,
+    request::{PlayerRequest, PlayerRequestKind},
+    sink::{self, SinkError},
+};
+use libfoksalcommon::net::{
+    request::{
+        FileRequest, LocalRequest, LocalRequestKind, RawPlayerRequest, RemoteRequest,
+        SubscribeArgs, UnsubscribeArgs,
+    },
+    response::{EventNotif, RemoteResponse, RemoteResponseInner, Response},
+};
 
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type ClientsMap = HashMap<SocketAddr, tokio_chan::UnboundedSender<RemoteResponseInner>>;
@@ -274,6 +274,7 @@ pub fn spawn(
     tokio::spawn(async move {
         let (tx_player_request, rx_player_request) = tokio_chan::unbounded_channel();
         let (tx_file_request, rx_file_request) = tokio_chan::unbounded_channel();
+        let (tx_mpris_event, _rx_mpris_event) = tokio_chan::unbounded_channel();
         let (tx_sink_response, rx_sink_response) = tokio_chan::unbounded_channel();
         let (tx_sink_request, rx_sink_request) = cbeam_chan::unbounded();
         let (tx_async_error, rx_async_error) = broadcast::channel(1);
@@ -283,7 +284,12 @@ pub fn spawn(
             audio_backend,
             ..
         } = config;
-        player_controller::spawn(tx_sink_request, rx_player_request, rx_sink_response);
+        player_controller::spawn(
+            tx_sink_request,
+            tx_mpris_event,
+            rx_player_request,
+            rx_sink_response,
+        );
         sink::spawn_blocking(
             audio_backend,
             tx_file_request,

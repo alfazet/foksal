@@ -20,14 +20,31 @@ pub enum QueueMode {
     Sequential,
     Random,
     Loop,
+    Single,
+}
+
+#[derive(Debug, Default)]
+struct IdGenerator {
+    next: usize,
 }
 
 #[derive(Debug, Default)]
 pub struct Queue {
     list: Vec<PathBuf>,
+    ids: Vec<usize>,
     pos: Option<usize>,
     mode: QueueMode,
     available: HashSet<PathBuf>,
+    id_gen: IdGenerator,
+}
+
+impl IdGenerator {
+    fn next(&mut self) -> usize {
+        let x = self.next;
+        self.next += 1;
+
+        x
+    }
 }
 
 impl Queue {
@@ -43,8 +60,12 @@ impl Queue {
         self.list.clone()
     }
 
-    pub fn cur(&self) -> Option<&Path> {
-        self.pos.map(|p| self.list[p].as_path())
+    pub fn list_ids(&self) -> &[usize] {
+        &self.ids
+    }
+
+    pub fn cur(&self) -> Option<(&Path, usize)> {
+        self.pos.map(|p| (self.list[p].as_path(), self.ids[p]))
     }
 
     pub fn pos(&self) -> Option<usize> {
@@ -76,6 +97,16 @@ impl Queue {
             }))
     }
 
+    pub fn get_id(&self, pos: usize) -> Result<usize> {
+        self.ids
+            .get(pos)
+            .copied()
+            .ok_or(anyhow!(QueueError::OutOfBounds {
+                index: pos,
+                len: self.list.len()
+            }))
+    }
+
     pub fn insert(&mut self, uris: &[impl AsRef<Path> + Into<PathBuf>], pos: usize) -> Result<()> {
         let len = self.list.len();
         ensure!(pos <= len, QueueError::OutOfBounds { index: pos, len });
@@ -87,11 +118,13 @@ impl Queue {
         if pos == len {
             for uri in uris.iter() {
                 self.list.push(uri.as_ref().into());
+                self.ids.push(self.id_gen.next());
             }
         } else {
             let mut p = pos;
             for uri in uris.iter() {
                 self.list.insert(p, uri.as_ref().into());
+                self.ids.push(self.id_gen.next());
                 p += 1;
             }
         }
@@ -107,6 +140,7 @@ impl Queue {
         }
         for uri in uris.iter() {
             self.list.push(uri.as_ref().into());
+            self.ids.push(self.id_gen.next());
         }
     }
 
@@ -118,6 +152,7 @@ impl Queue {
     pub fn remove(&mut self, pos: usize) -> Result<()> {
         let len = self.list.len();
         ensure!(pos < len, QueueError::OutOfBounds { index: pos, len });
+        self.ids.remove(pos);
         let removed_uri = self.list.remove(pos);
         self.available.remove(&removed_uri);
         if self.pos.is_some_and(|p| p >= pos) {
@@ -131,8 +166,9 @@ impl Queue {
         let len = self.list.len();
         ensure!(from < len, QueueError::OutOfBounds { index: from, len });
         ensure!(to <= len, QueueError::OutOfBounds { index: to, len });
-        let moved = self.list.remove(from);
-        self.list.insert(to, moved);
+        let (moved_id, moved_uri) = (self.ids.remove(from), self.list.remove(from));
+        self.list.insert(to, moved_uri);
+        self.ids.insert(to, moved_id);
 
         if let Some(p) = self.pos {
             if p == from {
@@ -160,6 +196,10 @@ impl Queue {
         self.reinit_available(false);
     }
 
+    pub fn set_mode_single(&mut self) {
+        self.mode = QueueMode::Single;
+    }
+
     pub fn move_to(&mut self, pos: usize) -> Result<()> {
         ensure!(
             pos < self.list.len(),
@@ -176,8 +216,9 @@ impl Queue {
     pub fn move_to_next(&mut self) {
         match self.mode {
             QueueMode::Sequential => self.move_to_next_seq(),
-            QueueMode::Random => self.move_to_next_random(),
             QueueMode::Loop => self.move_to_next_loop(),
+            QueueMode::Random => self.move_to_next_random(),
+            QueueMode::Single => self.move_to_next_single(),
         }
     }
 
@@ -213,6 +254,12 @@ impl Queue {
         }
     }
 
+    fn move_to_next_loop(&mut self) {
+        if self.pos.is_none() {
+            self.pos = if self.list.is_empty() { None } else { Some(0) };
+        }
+    }
+
     fn move_to_next_random(&mut self) {
         if self.list.is_empty() {
             self.pos = None;
@@ -230,9 +277,10 @@ impl Queue {
         self.pos = self.list.iter().position(|uri| uri == &random_uri);
     }
 
-    fn move_to_next_loop(&mut self) {
-        if self.pos.is_none() {
-            self.pos = if self.list.is_empty() { None } else { Some(0) };
+    fn move_to_next_single(&mut self) {
+        match self.pos {
+            Some(_) => self.pos = None,
+            None => self.pos = if self.list.is_empty() { None } else { Some(0) },
         }
     }
 

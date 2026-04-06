@@ -1,6 +1,5 @@
-use std::path::PathBuf;
-
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 use crate::error::FoksalError;
 use crate::model::{
@@ -43,12 +42,16 @@ pub(crate) enum Request {
     VolumeSet {
         volume: u8,
     },
-    Seek {
+    SeekBy {
         seconds: i64,
     },
+    SeekTo {
+        seconds: u64,
+    },
     QueueSeq,
-    QueueRandom,
     QueueLoop,
+    QueueRandom,
+    QueueSingle,
     QueueClear,
     State,
     Metadata {
@@ -115,6 +118,8 @@ pub(crate) struct RawResponse {
     #[serde(default)]
     pub current_song: Option<PathBuf>,
     #[serde(default)]
+    pub current_song_id: Option<usize>,
+    #[serde(default)]
     pub queue_pos: Option<usize>,
     #[serde(default)]
     pub queue_mode: Option<QueueMode>,
@@ -151,6 +156,7 @@ impl RawResponse {
 
         Ok(PlayerState {
             current_song: self.current_song,
+            current_song_id: self.current_song_id,
             queue_pos: self.queue_pos,
             queue_mode: self.queue_mode.ok_or_else(err)?,
             queue: self.queue.ok_or_else(err)?,
@@ -187,7 +193,7 @@ pub enum Event {
     /// The queue playback mode changed.
     QueueMode { mode: QueueMode },
     /// A new song started playing.
-    CurrentSong { uri: PathBuf },
+    CurrentSong { uri: PathBuf, id: usize },
     /// Playback state changed.
     PlaybackState { state: PlaybackState },
     /// Volume changed.
@@ -243,10 +249,10 @@ mod tests {
     }
 
     #[test]
-    fn serialize_seek() {
-        let req = Request::Seek { seconds: -10 };
+    fn serialize_seek_by() {
+        let req = Request::SeekBy { seconds: -10 };
         let json = serde_json::to_value(&req).unwrap();
-        assert_eq!(json["kind"], "seek");
+        assert_eq!(json["kind"], "seek_by");
         assert_eq!(json["seconds"], -10);
     }
 

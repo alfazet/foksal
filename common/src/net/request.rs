@@ -4,7 +4,10 @@ use std::{net::SocketAddr, path::PathBuf};
 use tokio::sync::{mpsc as tokio_chan, oneshot};
 use tokio_tungstenite::tungstenite::Bytes;
 
-use crate::{RawFilter, net::response::EventNotif};
+use crate::{
+    RawFilter,
+    net::response::{EventNotif, Response},
+};
 
 pub trait RawDbRequestArgs {}
 
@@ -110,8 +113,14 @@ pub struct RawVolumeSetArgs {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RawSeekArgs {
+pub struct RawSeekByArgs {
     pub seconds: isize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawSeekToArgs {
+    pub seconds: usize,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -135,7 +144,8 @@ pub enum RawPlayerRequest {
     QueueMove(RawQueueMoveArgs),
     AddAndPlay(RawAddAndPlayArgs),
     Play(RawPlayArgs),
-    Seek(RawSeekArgs),
+    SeekBy(RawSeekByArgs),
+    SeekTo(RawSeekToArgs),
     VolumeChange(RawVolumeChangeArgs),
     VolumeSet(RawVolumeSetArgs),
     State,
@@ -146,8 +156,9 @@ pub enum RawPlayerRequest {
     Next,
     Prev,
     QueueSeq,
-    QueueRandom,
     QueueLoop,
+    QueueRandom,
+    QueueSingle,
     QueueClear,
 }
 
@@ -178,6 +189,11 @@ pub struct LocalRequest {
     #[serde(flatten)]
     pub kind: LocalRequestKind,
     pub token: Option<String>,
+}
+
+pub struct MprisRequest {
+    pub kind: LocalRequestKind,
+    pub respond_to: oneshot::Sender<Response>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -237,7 +253,9 @@ impl RawPlayerRequestArgs for RawVolumeChangeArgs {}
 
 impl RawPlayerRequestArgs for RawVolumeSetArgs {}
 
-impl RawPlayerRequestArgs for RawSeekArgs {}
+impl RawPlayerRequestArgs for RawSeekByArgs {}
+
+impl RawPlayerRequestArgs for RawSeekToArgs {}
 
 impl FileRequest {
     pub fn new(raw: RawFileRequest, respond_to: oneshot::Sender<Bytes>) -> Self {

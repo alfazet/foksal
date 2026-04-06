@@ -26,13 +26,13 @@ pub enum SinkError {
 
 pub enum SinkRequest {
     GetState(oneshot::Sender<PlaybackState>),
-    GetCurSong(oneshot::Sender<Option<PathBuf>>),
     GetVolume(oneshot::Sender<Volume>),
     GetElapsed(oneshot::Sender<u64>),
     Play(PathBuf),
     VolChange(i8),
     VolSet(u8),
-    Seek(isize),
+    SeekBy(isize),
+    SeekTo(usize),
     Stop,
     Pause,
     Resume,
@@ -160,7 +160,7 @@ impl Sink {
         }
     }
 
-    fn seek(&mut self, seconds: isize) {
+    fn seek_by(&mut self, seconds: isize) {
         let Some(AudioSpec {
             n_channels,
             sample_rate,
@@ -173,13 +173,22 @@ impl Sink {
         self.check_song_end();
     }
 
+    fn seek_to(&mut self, seconds: usize) {
+        let Some(AudioSpec {
+            n_channels,
+            sample_rate,
+        }) = self.data.audio_spec.as_ref()
+        else {
+            return;
+        };
+        self.data.samples.ptr = n_channels * sample_rate * seconds;
+        self.check_song_end();
+    }
+
     fn handle_request(&mut self, request: SinkRequest) {
         match request {
             SinkRequest::GetState(respond_to) => {
                 let _ = respond_to.send(self.state);
-            }
-            SinkRequest::GetCurSong(respond_to) => {
-                let _ = respond_to.send(self.data.uri.clone());
             }
             SinkRequest::GetVolume(respond_to) => {
                 let _ = respond_to.send(self.volume);
@@ -199,8 +208,12 @@ impl Sink {
                     .tx_response
                     .send(SinkResponse::VolumeChanged(self.volume));
             }
-            SinkRequest::Seek(seconds) => {
-                self.seek(seconds);
+            SinkRequest::SeekBy(seconds) => {
+                self.seek_by(seconds);
+                self.recalc_elapsed();
+            }
+            SinkRequest::SeekTo(seconds) => {
+                self.seek_to(seconds);
                 self.recalc_elapsed();
             }
             SinkRequest::Play(uri) => {

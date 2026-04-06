@@ -1,5 +1,6 @@
 pub mod core;
 pub mod device;
+pub mod mpris;
 pub mod player_controller;
 pub mod request;
 pub mod sink;

@@ -1,6 +1,6 @@
 # Foksal
 
-A remote music player. Perfect for those who enjoy owning their music.
+A remote music player with MPRIS support. Perfect for those who enjoy owning their music.
 
 ## Installation
 Install from cargo with `cargo install foksal-{TYPE}` (where `TYPE` is one of `local`, `remote` or `proxy`, see below) or download the source code and build foksal locally.
@@ -29,7 +29,7 @@ If the config file isn't there, it will be generated based on the default config
 - `music_root` - The root directory of your music collection (default: foksal's working dir).
 - `audio_backend` - The audio backend (alsa, pulse, pipewire, etc.) (default: well, 1default` - it should work just fine).
 - `allowed_exts` - A list of extensions that foksal will treat as music files (default: `mp3`, `m4a` and `flac`).
-- `n_jobs` - How many songs can be decoded in parallel (default: the number of available CPU cores).
+- `n_jobs` - How many songs can be decoded in parallel (default: the number of available CPU cores). Careful: each decoded song requires a chunk of RAM.
 - `ignore_globset` - A list of Unix glob patterns that foksal will ignore when searching for music (default: empty).
 
 ### Remote options
@@ -51,7 +51,9 @@ Foksal isn't very useful all by itself, you will need an external client to cont
 For now, only a basic CLI-based client is available, install it with `cargo install foksal-ctl`. It's not very human-friendly, but can work well
 as part of a scripting pipeline (for instance, to display the current song on your statusbar).
 
-A GUI client is in the works...
+Another option is to control foksal with [playerctl](https://github.com/altdesktop/playerctl), just like any other MPRIS-compatible player (for now only `foksal-local`, `proxy` support coming soon).
+
+A [GUI client](https://codeberg.org/alfazet/feux) will be released soon.
 
 ## Roadmap
 Currently planned features:

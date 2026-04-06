@@ -128,10 +128,15 @@ impl BlockingFoksalClient {
         self.send_no_response(Request::VolumeSet { volume })
     }
 
-    /// Seek within the current song. For forward/backward seeking, `seconds` must be
+    /// Seek by an offset within the current song. For forward/backward seeking, `seconds` must be
     /// positive/negative.
-    pub fn seek(&mut self, seconds: i64) -> Result<(), FoksalError> {
-        self.send_no_response(Request::Seek { seconds })
+    pub fn seek_by(&mut self, seconds: i64) -> Result<(), FoksalError> {
+        self.send_no_response(Request::SeekBy { seconds })
+    }
+
+    /// Seek by absolute position within the current song.
+    pub fn seek_to(&mut self, seconds: u64) -> Result<(), FoksalError> {
+        self.send_no_response(Request::SeekTo { seconds })
     }
 
     /// Set the queue to sequential playback mode (see [`QueueMode`]).
@@ -139,14 +144,19 @@ impl BlockingFoksalClient {
         self.send_no_response(Request::QueueSeq)
     }
 
+    /// Set the queue to loop playback mode (see [`QueueMode`]).
+    pub fn queue_loop(&mut self) -> Result<(), FoksalError> {
+        self.send_no_response(Request::QueueLoop)
+    }
+
     /// Set the queue to random playback mode (see [`QueueMode`]).
     pub fn queue_random(&mut self) -> Result<(), FoksalError> {
         self.send_no_response(Request::QueueRandom)
     }
 
-    /// Set the queue to loop playback mode (see [`QueueMode`]).
-    pub fn queue_loop(&mut self) -> Result<(), FoksalError> {
-        self.send_no_response(Request::QueueLoop)
+    /// Set the queue to single playback mode (see [`QueueMode`]).
+    pub fn queue_single(&mut self) -> Result<(), FoksalError> {
+        self.send_no_response(Request::QueueSingle)
     }
 
     /// Fetch the full current player state (see [`PlayerState`]).

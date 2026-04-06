@@ -17,12 +17,14 @@ pub enum PlaybackState {
 pub enum QueueMode {
     /// Songs come one after another in order of the queue.
     Sequential,
+    /// The played song will repeat indefinitely until it's manually changed.
+    Loop,
     /// Songs after and including the current one are added to a pool.
     /// When the next song is requested, foksal will select one randomly from the pool.
     /// Whenever the pool empties out, it's re-initialized with all of the enqueued songs.
     Random,
-    /// The played song will repeat indefinitely until it's manually changed.
-    Loop,
+    /// The playback will end after the current song finishes.
+    Single,
 }
 
 /// Subscription targets for events.
@@ -55,6 +57,7 @@ pub struct Filter {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlayerState {
     pub current_song: Option<PathBuf>,
+    pub current_song_id: Option<usize>,
     pub queue_pos: Option<usize>,
     pub queue_mode: QueueMode,
     pub queue: Vec<PathBuf>,

@@ -6,8 +6,8 @@ use crate::core::Player;
 use libfoksalcommon::net::{
     request::{
         PlayerSubTarget, RawAddAndPlayArgs, RawAddToQueueArgs, RawPlayArgs, RawPlayerRequest,
-        RawQueueMoveArgs, RawRemoveFromQueueArgs, RawSeekArgs, RawVolumeChangeArgs,
-        RawVolumeSetArgs, SubscribeArgs, UnsubscribeArgs,
+        RawQueueMoveArgs, RawRemoveFromQueueArgs, RawSeekByArgs, RawSeekToArgs,
+        RawVolumeChangeArgs, RawVolumeSetArgs, SubscribeArgs, UnsubscribeArgs,
     },
     response::Response,
 };
@@ -44,8 +44,12 @@ pub struct ParsedVolumeSetArgs {
     pub volume: u8,
 }
 
-pub struct ParsedSeekArgs {
+pub struct ParsedSeekByArgs {
     pub seconds: isize,
+}
+
+pub struct ParsedSeekToArgs {
+    pub seconds: usize,
 }
 
 pub enum PlayerRequestKind {
@@ -73,7 +77,9 @@ impl ParsedPlayerRequestArgs for ParsedVolumeChangeArgs {}
 
 impl ParsedPlayerRequestArgs for ParsedVolumeSetArgs {}
 
-impl ParsedPlayerRequestArgs for ParsedSeekArgs {}
+impl ParsedPlayerRequestArgs for ParsedSeekByArgs {}
+
+impl ParsedPlayerRequestArgs for ParsedSeekToArgs {}
 
 impl TryFrom<RawAddToQueueArgs> for ParsedAddToQueueArgs {
     type Error = anyhow::Error;
@@ -137,10 +143,20 @@ impl TryFrom<RawVolumeSetArgs> for ParsedVolumeSetArgs {
     }
 }
 
-impl TryFrom<RawSeekArgs> for ParsedSeekArgs {
+impl TryFrom<RawSeekByArgs> for ParsedSeekByArgs {
     type Error = anyhow::Error;
 
-    fn try_from(raw: RawSeekArgs) -> Result<Self> {
+    fn try_from(raw: RawSeekByArgs) -> Result<Self> {
+        Ok(Self {
+            seconds: raw.seconds,
+        })
+    }
+}
+
+impl TryFrom<RawSeekToArgs> for ParsedSeekToArgs {
+    type Error = anyhow::Error;
+
+    fn try_from(raw: RawSeekToArgs) -> Result<Self> {
         Ok(Self {
             seconds: raw.seconds,
         })
@@ -186,6 +202,7 @@ impl Player {
     /// {
     ///     "ok": true,
     ///     "current_song": "current/song",
+    ///     "current_song_id": 123,
     ///     "queue_pos": 0,
     ///     "queue_mode": "random",
     ///     "queue": [
@@ -199,13 +216,15 @@ impl Player {
     /// ```
     pub async fn req_state(&self) -> Response {
         let queue = self.queue();
-        let cur_song = self.cur_song().await;
+        let cur_song = self.cur_song();
+        let cur_id = self.cur_id();
         let playback_state = self.playback_state().await;
         let volume = self.volume().await;
         let elapsed = self.elapsed().await;
         Response::new_ok()
             .with_item("queue", &queue.list())
             .with_item("current_song", &cur_song)
+            .with_item("current_song_id", &cur_id)
             .with_item("queue_pos", &queue.pos())
             .with_item("queue_mode", &queue.mode())
             .with_item("playback_state", &playback_state)
@@ -241,8 +260,13 @@ impl Player {
         Response::new_ok()
     }
 
-    pub fn req_seek(&self, ParsedSeekArgs { seconds }: ParsedSeekArgs) -> Response {
-        self.seek(seconds);
+    pub fn req_seek_by(&self, ParsedSeekByArgs { seconds }: ParsedSeekByArgs) -> Response {
+        self.seek_by(seconds);
+        Response::new_ok()
+    }
+
+    pub fn req_seek_to(&self, ParsedSeekToArgs { seconds }: ParsedSeekToArgs) -> Response {
+        self.seek_to(seconds);
         Response::new_ok()
     }
 
@@ -288,6 +312,11 @@ impl Player {
 
     pub fn req_queue_random(&mut self) -> Response {
         self.queue_random();
+        Response::new_ok()
+    }
+
+    pub fn req_queue_single(&mut self) -> Response {
+        self.queue_single();
         Response::new_ok()
     }
 

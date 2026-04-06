@@ -24,7 +24,7 @@ pub enum PlayerEvent {
     QueueContent { queue: Vec<PathBuf> },
     QueuePos { pos: Option<usize> },
     QueueMode { mode: QueueMode },
-    CurrentSong { uri: PathBuf },
+    CurrentSong { uri: PathBuf, id: usize },
     PlaybackState { state: PlaybackState },
     Volume { volume: u8 },
     Elapsed { seconds: u64 },
@@ -34,14 +34,19 @@ pub struct Player {
     queue: Queue,
     subscribers: PlayerSubscribersMap,
     tx_sink_request: cbeam_chan::Sender<SinkRequest>,
+    tx_mpris_event: tokio_chan::UnboundedSender<PlayerEvent>,
 }
 
 impl Player {
-    pub fn new(tx_sink_request: cbeam_chan::Sender<SinkRequest>) -> Self {
+    pub fn new(
+        tx_sink_request: cbeam_chan::Sender<SinkRequest>,
+        tx_mpris_event: tokio_chan::UnboundedSender<PlayerEvent>,
+    ) -> Self {
         Self {
             queue: Queue::new(),
             subscribers: HashMap::new(),
             tx_sink_request,
+            tx_mpris_event,
         }
     }
 
@@ -68,10 +73,12 @@ impl Player {
         rx.await.unwrap_or_default()
     }
 
-    pub async fn cur_song(&self) -> Option<PathBuf> {
-        let (tx, rx) = oneshot::channel();
-        let _ = self.tx_sink_request.send(SinkRequest::GetCurSong(tx));
-        rx.await.unwrap_or_default()
+    pub fn cur_song(&self) -> Option<&Path> {
+        self.queue.cur().map(|c| c.0)
+    }
+
+    pub fn cur_id(&self) -> Option<usize> {
+        self.queue.cur().map(|c| c.1)
     }
 
     pub async fn volume(&self) -> u8 {
@@ -130,7 +137,8 @@ impl Player {
     pub fn play(&mut self, pos: usize) -> Result<()> {
         self.queue.move_to(pos)?;
         let uri = self.queue.get(pos)?;
-        self.play_from_uri(uri);
+        let id = self.queue.get_id(pos)?;
+        self.play_from_uri(uri, id);
         self.notify_queue_pos();
 
         Ok(())
@@ -150,8 +158,12 @@ impl Player {
         let _ = self.tx_sink_request.send(SinkRequest::VolSet(volume));
     }
 
-    pub fn seek(&self, seconds: isize) {
-        let _ = self.tx_sink_request.send(SinkRequest::Seek(seconds));
+    pub fn seek_by(&self, seconds: isize) {
+        let _ = self.tx_sink_request.send(SinkRequest::SeekBy(seconds));
+    }
+
+    pub fn seek_to(&self, seconds: usize) {
+        let _ = self.tx_sink_request.send(SinkRequest::SeekTo(seconds));
     }
 
     pub fn pause(&self) {
@@ -175,7 +187,7 @@ impl Player {
     pub fn next(&mut self) {
         self.queue.move_to_next();
         match self.queue.cur() {
-            Some(uri) => self.play_from_uri(uri),
+            Some((uri, id)) => self.play_from_uri(uri, id),
             None => self.stop(),
         }
         self.notify_queue_pos();
@@ -184,7 +196,7 @@ impl Player {
     pub fn prev(&mut self) {
         self.queue.move_to_prev();
         match self.queue.cur() {
-            Some(uri) => self.play_from_uri(uri),
+            Some((uri, id)) => self.play_from_uri(uri, id),
             None => self.stop(),
         }
         self.notify_queue_pos();
@@ -202,6 +214,11 @@ impl Player {
 
     pub fn queue_random(&mut self) {
         self.queue.set_mode_random();
+        self.notify_queue_mode();
+    }
+
+    pub fn queue_single(&mut self) {
+        self.queue.set_mode_single();
         self.notify_queue_mode();
     }
 
@@ -223,39 +240,42 @@ impl Player {
     }
 
     pub fn notify_playback_state(&self, state: PlaybackState) {
-        self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::PlaybackState { state });
+        let ev = PlayerEvent::PlaybackState { state };
+        self.notify_subscribers(PlayerSubTarget::Sink, ev.clone());
+        self.notify_mpris(ev);
     }
 
     pub fn notify_queue_mode(&self) {
         let mode = self.queue.mode();
-        self.notify_subscribers(PlayerSubTarget::Queue, PlayerEvent::QueueMode { mode });
+        let ev = PlayerEvent::QueueMode { mode };
+        self.notify_subscribers(PlayerSubTarget::Queue, ev.clone());
+        self.notify_mpris(ev);
     }
 
-    pub fn notify_volume(&self, volume: Volume) {
-        self.notify_subscribers(
-            PlayerSubTarget::Sink,
-            PlayerEvent::Volume { volume: volume.0 },
-        );
+    pub fn notify_volume(&self, Volume(volume): Volume) {
+        let ev = PlayerEvent::Volume { volume };
+        self.notify_subscribers(PlayerSubTarget::Sink, ev.clone());
+        self.notify_mpris(ev);
     }
 
     pub fn notify_elapsed(&self, seconds: u64) {
         self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::Elapsed { seconds });
     }
 
-    pub fn notify_song(&self, uri: impl AsRef<Path>) {
-        self.notify_subscribers(
-            PlayerSubTarget::Sink,
-            PlayerEvent::CurrentSong {
-                uri: uri.as_ref().to_path_buf(),
-            },
-        );
+    pub fn notify_song(&self, uri: impl AsRef<Path>, id: usize) {
+        let ev = PlayerEvent::CurrentSong {
+            uri: uri.as_ref().to_path_buf(),
+            id,
+        };
+        self.notify_subscribers(PlayerSubTarget::Sink, ev.clone());
+        self.notify_mpris(ev);
     }
 
-    fn play_from_uri(&self, uri: impl AsRef<Path>) {
+    fn play_from_uri(&self, uri: impl AsRef<Path>, id: usize) {
         let _ = self
             .tx_sink_request
             .send(SinkRequest::Play(uri.as_ref().to_path_buf()));
-        self.notify_song(uri);
+        self.notify_song(uri, id);
     }
 
     fn notify_subscribers(&self, target: PlayerSubTarget, event: PlayerEvent) {
@@ -265,5 +285,9 @@ impl Player {
                 let _ = send_to.send(EventNotif::new(event.clone(), *sub_addr));
             }
         }
+    }
+
+    fn notify_mpris(&self, event: PlayerEvent) {
+        let _ = self.tx_mpris_event.send(event);
     }
 }
