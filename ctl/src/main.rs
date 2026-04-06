@@ -1,10 +1,11 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use serde_json::{Value, json};
 use std::{collections::HashMap, path::PathBuf};
 
 use libfoksalclient::{
     blocking::BlockingFoksalClient,
-    model::{PlaybackState, PlayerState, QueueMode, SongMetadata, TagKey},
+    model::{PlayerState, SongMetadata, TagKey, TagValue},
 };
 
 const DEFAULT_PORT: u16 = 2137;
@@ -52,7 +53,7 @@ enum Command {
     SeekTo { seconds: u64 },
     /// clear the playback queue
     Clear,
-    /// query the player state
+    /// print the current player state as a JSON object
     State,
 }
 
@@ -78,104 +79,51 @@ const TAGS: [TagKey; 4] = [
     TagKey::TrackTitle,
     TagKey::Duration,
 ];
-const N_A: &str = "[n/a]";
 
-fn playback_state_str(state: PlaybackState) -> String {
-    let s = match state {
-        PlaybackState::Playing => "playing",
-        PlaybackState::Paused => "paused",
-        PlaybackState::Stopped => "stopped",
-    };
-
-    format!("state:\t{}", s)
-}
-
-fn format_song(data: &SongMetadata) -> String {
-    let values: Vec<_> = TAGS
-        .iter()
-        .map(|tag| {
-            data.get(tag)
-                .and_then(|v| {
-                    if let Some(s) = v.as_str() {
-                        Some(s.to_owned())
-                    } else {
-                        v.as_i64().map(|s| s.to_string())
-                    }
-                })
-                .unwrap_or(N_A.into())
+fn convert_metadata(data: &SongMetadata) -> HashMap<String, Value> {
+    data.iter()
+        .map(|(k, v)| {
+            let json_v = match v {
+                TagValue::Null => Value::Null,
+                TagValue::String(s) => Value::String(s.clone()),
+                TagValue::Number(n) => Value::Number((*n).into()),
+            };
+            (k.to_string(), json_v)
         })
-        .collect();
-
-    let mut s = String::new();
-    for value in values {
-        s.push_str(value.as_str());
-        s.push('\t');
-    }
-    s.pop();
-
-    s
-}
-
-fn queue_mode_str(mode: QueueMode) -> String {
-    let s = match mode {
-        QueueMode::Sequential => "sequential",
-        QueueMode::Random => "random",
-        QueueMode::Loop => "loop",
-    };
-
-    format!("queue_mode:\t{}", s)
-}
-
-fn queue_pos_str(pos: Option<usize>) -> String {
-    let s = match pos {
-        Some(pos) => pos.to_string(),
-        None => N_A.into(),
-    };
-
-    format!("queue_pos:\t{}", s)
-}
-
-fn queue_str(data: &HashMap<&PathBuf, &Option<SongMetadata>>, queue: &[PathBuf]) -> String {
-    let mut s = String::new();
-    for (i, uri) in queue.iter().enumerate() {
-        s.push_str(&format!("\n{}\t", i));
-        match *data.get(&uri).unwrap_or(&&Default::default()) {
-            Some(song_data) => s.push_str(&format_song(song_data)),
-            None => s.push_str(N_A),
-        }
-    }
-
-    s
+        .collect()
 }
 
 fn print_info(state: PlayerState, songs_data: Vec<Option<SongMetadata>>) {
     let data_map: HashMap<_, _> = state.queue.iter().zip(songs_data.iter()).collect();
-    let current_song_str = match state.current_song {
-        Some(uri) => {
-            let data = match data_map.get(&uri) {
-                Some(Some(data)) => data,
-                _ => &Default::default(),
+    let mut output = serde_json::to_value(&state).unwrap();
+    let queue: Vec<_> = state
+        .queue
+        .iter()
+        .map(|uri| {
+            let metadata = match data_map.get(&uri) {
+                Some(Some(data)) => convert_metadata(data),
+                _ => HashMap::new(),
             };
+            json!({
+                "uri": uri,
+                "metadata": metadata
+            })
+        })
+        .collect();
+    output["queue"] = serde_json::json!(queue);
 
-            format_song(data)
-        }
-        None => N_A.into(),
-    };
-    let current_song_str = format!("current_song:\t{}", current_song_str);
-    let elapsed_str = format!("elapsed:\t{}", state.elapsed);
-    let volume_str = format!("volume:\t{}", state.volume);
-    let state_str = playback_state_str(state.playback_state);
-    let queue_mode_str = queue_mode_str(state.queue_mode);
-    let queue_pos_str = queue_pos_str(state.queue_pos);
-    let queue_str = queue_str(&data_map, &state.queue);
+    // if let Some(uri) = &state.current_song {
+    //     let metadata = match data_map.get(uri) {
+    //         Some(Some(data)) => convert_metadata(data),
+    //         _ => std::collections::HashMap::new(),
+    //     };
+    //     output["current_song"] = serde_json::json!({
+    //         "uri": uri,
+    //         "metadata": metadata
+    //     });
+    // }
 
-    println!("{}", current_song_str);
-    println!("{}", elapsed_str);
-    println!("{}", volume_str);
-    println!("{}", state_str);
-    println!("{}", queue_mode_str);
-    println!("{}", queue_pos_str);
-    println!("{}", queue_str);
+    println!("{}", serde_json::to_string_pretty(&output).unwrap());
 }
 
 fn send_request(client: &mut BlockingFoksalClient, command: Command) -> Result<()> {
