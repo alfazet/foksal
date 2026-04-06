@@ -68,10 +68,12 @@ impl Player {
         rx.await.unwrap_or_default()
     }
 
-    pub async fn cur_song(&self) -> Option<PathBuf> {
-        let (tx, rx) = oneshot::channel();
-        let _ = self.tx_sink_request.send(SinkRequest::GetCurSong(tx));
-        rx.await.unwrap_or_default()
+    pub fn cur_song(&self) -> Option<&Path> {
+        self.queue.cur().map(|c| c.0)
+    }
+
+    pub fn cur_id(&self) -> Option<usize> {
+        self.queue.cur().map(|c| c.1)
     }
 
     pub async fn volume(&self) -> u8 {
@@ -150,8 +152,12 @@ impl Player {
         let _ = self.tx_sink_request.send(SinkRequest::VolSet(volume));
     }
 
-    pub fn seek(&self, seconds: isize) {
-        let _ = self.tx_sink_request.send(SinkRequest::Seek(seconds));
+    pub fn seek_by(&self, seconds: isize) {
+        let _ = self.tx_sink_request.send(SinkRequest::SeekBy(seconds));
+    }
+
+    pub fn seek_to(&self, seconds: usize) {
+        let _ = self.tx_sink_request.send(SinkRequest::SeekTo(seconds));
     }
 
     pub fn pause(&self) {
@@ -174,7 +180,7 @@ impl Player {
 
     pub fn next(&mut self) {
         self.queue.move_to_next();
-        match self.queue.cur() {
+        match self.queue.cur().map(|c| c.0) {
             Some(uri) => self.play_from_uri(uri),
             None => self.stop(),
         }
@@ -183,7 +189,7 @@ impl Player {
 
     pub fn prev(&mut self) {
         self.queue.move_to_prev();
-        match self.queue.cur() {
+        match self.queue.cur().map(|c| c.0) {
             Some(uri) => self.play_from_uri(uri),
             None => self.stop(),
         }

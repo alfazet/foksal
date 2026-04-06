@@ -170,10 +170,15 @@ impl FoksalClient {
         self.send_no_response(Request::VolumeSet { volume }).await
     }
 
-    /// Seek within the current song. For forward/backward seeking, `seconds` must be
+    /// Seek by an offset within the current song. For forward/backward seeking, `seconds` must be
     /// positive/negative.
-    pub async fn seek(&mut self, seconds: i64) -> Result<(), FoksalError> {
-        self.send_no_response(Request::Seek { seconds }).await
+    pub async fn seek_by(&mut self, seconds: i64) -> Result<(), FoksalError> {
+        self.send_no_response(Request::SeekBy { seconds }).await
+    }
+
+    /// Seek by absolute position within the current song.
+    pub async fn seek_to(&mut self, seconds: u64) -> Result<(), FoksalError> {
+        self.send_no_response(Request::SeekTo { seconds }).await
     }
 
     /// Set the queue to sequential playback mode (see [`QueueMode`]).

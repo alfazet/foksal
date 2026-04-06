@@ -12,6 +12,7 @@ use tokio_tungstenite::tungstenite::{
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
+use crate::config::ParsedRemoteConfig;
 use libfoksalcommon::net::{
     request::{FileRequest, RawDbRequest, RemoteRequest, SubscribeArgs, UnsubscribeArgs},
     response::{EventNotif, RemoteResponse, RemoteResponseInner, RemoteResponseKind, Response},
@@ -20,8 +21,6 @@ use libfoksaldb::{
     db_controller,
     request::{DbRequest, DbRequestKind},
 };
-
-use crate::config::ParsedRemoteConfig;
 
 async fn handle_request(
     bytes: Bytes,

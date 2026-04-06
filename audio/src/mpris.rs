@@ -4,6 +4,7 @@ use mpris_server::{
     builder::MetadataBuilder,
     zbus::{Result, fdo},
 };
+use serde_json::Value;
 use std::{path::PathBuf, thread};
 use tokio::{
     runtime::Runtime,
@@ -16,11 +17,11 @@ use libfoksalcommon::{
     net::{
         request::{
             LocalRequestKind, MprisRequest, RawAddAndPlayArgs, RawDbRequest, RawMetadataArgs,
-            RawPlayerRequest, RawSeekArgs, RawVolumeSetArgs,
+            RawPlayerRequest, RawSeekByArgs, RawSeekToArgs, RawVolumeSetArgs,
         },
         response::Response,
     },
-    utils,
+    utils::{self},
 };
 
 const MPRIS_TAGS: [&str; 9] = [
@@ -59,7 +60,7 @@ impl FoksalMpris {
         });
         let resp = rx
             .await
-            .map_err(|_| fdo::Error::Failed("player_state".into()))?;
+            .map_err(|_| fdo::Error::Failed("player_state fetch".into()))?;
 
         Ok(resp)
     }
@@ -184,11 +185,11 @@ impl LocalPlayerInterface for FoksalMpris {
 
     async fn seek(&self, offset: Time) -> fdo::Result<()> {
         let (respond_to, _) = oneshot::channel();
-        let args = RawSeekArgs {
+        let args = RawSeekByArgs {
             seconds: offset.as_secs() as isize,
         };
         let _ = self.tx_request.send(MprisRequest {
-            kind: LocalRequestKind::PlayerRequest(RawPlayerRequest::Seek(args)),
+            kind: LocalRequestKind::PlayerRequest(RawPlayerRequest::SeekBy(args)),
             respond_to,
         });
 
@@ -197,13 +198,24 @@ impl LocalPlayerInterface for FoksalMpris {
 
     async fn set_position(&self, track_id: TrackId, position: Time) -> fdo::Result<()> {
         let player_state = self.player_state().await?;
-        let Some(uri) = player_state.inner()["current_song"].as_str() else {
+        let (Some(uri), Some(id)) = (
+            player_state.inner()["current_song"].as_str(),
+            player_state.inner()["current_song_id"].as_u64(),
+        ) else {
             return Ok(());
         };
-        if utils::uri_to_track_id(uri) != track_id.as_str() {
+        if utils::uri_to_track_id(uri, id as usize) != track_id.as_str() {
             return Ok(());
         }
-        // TODO: implement GoTo sink request
+
+        let (respond_to, _) = oneshot::channel();
+        let args = RawSeekToArgs {
+            seconds: position.as_secs() as usize,
+        };
+        let _ = self.tx_request.send(MprisRequest {
+            kind: LocalRequestKind::PlayerRequest(RawPlayerRequest::SeekTo(args)),
+            respond_to,
+        });
 
         Ok(())
     }
@@ -272,7 +284,13 @@ impl LocalPlayerInterface for FoksalMpris {
     }
 
     async fn shuffle(&self) -> fdo::Result<bool> {
-        Ok(true)
+        let player_state = self.player_state().await?;
+        let Some(queue_mode) = player_state.inner()["queue_mode"].as_str() else {
+            return Err(fdo::Error::Failed("loop_status deserialization".into()));
+        };
+        let res = queue_mode == "random";
+
+        Ok(res)
     }
 
     async fn set_shuffle(&self, shuffle: bool) -> Result<()> {
@@ -291,7 +309,10 @@ impl LocalPlayerInterface for FoksalMpris {
 
     async fn metadata(&self) -> fdo::Result<Metadata> {
         let player_state = self.player_state().await?;
-        let Some(uri) = player_state.inner()["current_song"].as_str() else {
+        let (Some(uri), Some(id)) = (
+            player_state.inner()["current_song"].as_str(),
+            player_state.inner()["current_song_id"].as_u64(),
+        ) else {
             let no_track = MetadataBuilder::default().trackid(TrackId::NO_TRACK);
             return Ok(no_track.build());
         };
@@ -306,55 +327,15 @@ impl LocalPlayerInterface for FoksalMpris {
         });
         let resp = rx
             .await
-            .map_err(|_| fdo::Error::Failed("metadata".into()))?;
-        let Some(metadata) = resp.inner()["metadata"]
-            .as_array()
-            .and_then(|m| m[0].as_object())
-        else {
+            .map_err(|_| fdo::Error::Failed("metadata fetch".into()))?;
+        let Some(metadata) = resp.inner()["metadata"].as_array().and_then(|m| m.first()) else {
             return Err(fdo::Error::Failed("metadata deserialization".into()));
         };
+        let track_id: TrackId = utils::uri_to_track_id(uri, id as usize)
+            .try_into()
+            .map_err(|_| fdo::Error::Failed("invalid track id".into()))?;
 
-        let track_id: TrackId = utils::uri_to_track_id(uri).try_into().unwrap();
-        let album = metadata["album"].as_str();
-        let albumartist = metadata["albumartist"].as_str();
-        let artist = metadata["artist"].as_str();
-        let composer = metadata["composer"].as_str();
-        let discnumber = metadata["discnumber"].as_i64();
-        let duration = metadata["duration"].as_i64();
-        let genre = metadata["genre"].as_str();
-        let tracktitle = metadata["tracktitle"].as_str();
-        let tracknumber = metadata["tracknumber"].as_i64();
-
-        let mut builder = MetadataBuilder::default().trackid(track_id);
-        if let Some(album) = album {
-            builder = builder.album(album);
-        }
-        if let Some(albumartist) = albumartist {
-            builder = builder.album_artist([albumartist].into_iter());
-        }
-        if let Some(artist) = artist {
-            builder = builder.artist([artist].into_iter());
-        }
-        if let Some(composer) = composer {
-            builder = builder.composer([composer].into_iter());
-        }
-        if let Some(discnumber) = discnumber {
-            builder = builder.disc_number(discnumber as i32);
-        }
-        if let Some(duration) = duration {
-            builder = builder.length(Time::from_secs(duration));
-        }
-        if let Some(genre) = genre {
-            builder = builder.genre([genre].into_iter());
-        }
-        if let Some(tracktitle) = tracktitle {
-            builder = builder.title(tracktitle);
-        }
-        if let Some(tracknumber) = tracknumber {
-            builder = builder.track_number(tracknumber as i32)
-        }
-
-        Ok(builder.build())
+        convert_metadata(track_id, metadata)
     }
 
     async fn volume(&self) -> fdo::Result<Volume> {
@@ -438,6 +419,58 @@ pub fn spawn(tx_request: tokio_chan::UnboundedSender<MprisRequest>, c_token: Can
             server.run().await;
 
             // TODO: emit events
+            //  - on playback status change
+            //  - on loop status change
+            //  - on shuffle status change
+            //  - on song change (new metadata)
+            //  - on volume change
         });
     });
+}
+
+/// convert a metadata map from json to mpris format
+fn convert_metadata(track_id: TrackId, json: &Value) -> fdo::Result<Metadata> {
+    let metadata = json
+        .as_object()
+        .ok_or(fdo::Error::Failed("metadata deserialization".into()))?;
+    let album = metadata["album"].as_str();
+    let albumartist = metadata["albumartist"].as_str();
+    let artist = metadata["artist"].as_str();
+    let composer = metadata["composer"].as_str();
+    let discnumber = metadata["discnumber"].as_i64();
+    let duration = metadata["duration"].as_i64();
+    let genre = metadata["genre"].as_str();
+    let tracktitle = metadata["tracktitle"].as_str();
+    let tracknumber = metadata["tracknumber"].as_i64();
+
+    let mut builder = MetadataBuilder::default().trackid(track_id);
+    if let Some(album) = album {
+        builder = builder.album(album);
+    }
+    if let Some(albumartist) = albumartist {
+        builder = builder.album_artist([albumartist]);
+    }
+    if let Some(artist) = artist {
+        builder = builder.artist([artist]);
+    }
+    if let Some(composer) = composer {
+        builder = builder.composer([composer]);
+    }
+    if let Some(discnumber) = discnumber {
+        builder = builder.disc_number(discnumber as i32);
+    }
+    if let Some(duration) = duration {
+        builder = builder.length(Time::from_secs(duration));
+    }
+    if let Some(genre) = genre {
+        builder = builder.genre([genre]);
+    }
+    if let Some(tracktitle) = tracktitle {
+        builder = builder.title(tracktitle);
+    }
+    if let Some(tracknumber) = tracknumber {
+        builder = builder.track_number(tracknumber as i32)
+    }
+
+    Ok(builder.build())
 }

@@ -1,6 +1,5 @@
-use std::path::PathBuf;
-
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 use crate::error::FoksalError;
 use crate::model::{
@@ -43,8 +42,11 @@ pub(crate) enum Request {
     VolumeSet {
         volume: u8,
     },
-    Seek {
+    SeekBy {
         seconds: i64,
+    },
+    SeekTo {
+        seconds: u64,
     },
     QueueSeq,
     QueueRandom,
@@ -115,6 +117,8 @@ pub(crate) struct RawResponse {
     #[serde(default)]
     pub current_song: Option<PathBuf>,
     #[serde(default)]
+    pub current_song_id: Option<usize>,
+    #[serde(default)]
     pub queue_pos: Option<usize>,
     #[serde(default)]
     pub queue_mode: Option<QueueMode>,
@@ -151,6 +155,7 @@ impl RawResponse {
 
         Ok(PlayerState {
             current_song: self.current_song,
+            current_song_id: self.current_song_id,
             queue_pos: self.queue_pos,
             queue_mode: self.queue_mode.ok_or_else(err)?,
             queue: self.queue.ok_or_else(err)?,

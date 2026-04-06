@@ -55,6 +55,7 @@ pub struct Filter {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlayerState {
     pub current_song: Option<PathBuf>,
+    pub current_song_id: Option<usize>,
     pub queue_pos: Option<usize>,
     pub queue_mode: QueueMode,
     pub queue: Vec<PathBuf>,

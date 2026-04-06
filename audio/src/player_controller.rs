@@ -80,8 +80,11 @@ async fn run(
                         RawPlayerRequest::VolumeSet(raw_args) => {
                             handle_request(&player, raw_args, |player, args| player.req_volume_set(args))
                         }
-                        RawPlayerRequest::Seek(raw_args) => {
-                            handle_request(&player, raw_args, |player, args| player.req_seek(args))
+                        RawPlayerRequest::SeekBy(raw_args) => {
+                            handle_request(&player, raw_args, |player, args| player.req_seek_by(args))
+                        }
+                        RawPlayerRequest::SeekTo(raw_args) => {
+                            handle_request(&player, raw_args, |player, args| player.req_seek_to(args))
                         }
                         RawPlayerRequest::State => player.req_state().await,
                         RawPlayerRequest::Pause => player.req_pause(),

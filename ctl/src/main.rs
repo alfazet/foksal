@@ -46,8 +46,10 @@ enum Command {
     VolumeChange { delta: i8 },
     /// set volume
     VolumeSet { volume: u8 },
-    /// seek within the current song
-    Seek { seconds: i64 },
+    /// seek within the current song (by offset)
+    SeekBy { seconds: i64 },
+    /// seek within the current song (by absolute position)
+    SeekTo { seconds: u64 },
     /// clear the playback queue
     Clear,
     /// query the player state
@@ -226,8 +228,11 @@ fn send_request(client: &mut BlockingFoksalClient, command: Command) -> Result<(
         Command::VolumeSet { volume } => {
             client.volume_set(volume)?;
         }
-        Command::Seek { seconds } => {
-            client.seek(seconds)?;
+        Command::SeekTo { seconds } => {
+            client.seek_to(seconds)?;
+        }
+        Command::SeekBy { seconds } => {
+            client.seek_by(seconds)?;
         }
         Command::Clear => {
             client.queue_clear()?;
