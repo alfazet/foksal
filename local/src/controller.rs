@@ -274,7 +274,7 @@ pub fn spawn(config: ParsedLocalConfig, c_token: CancellationToken) -> JoinHandl
             tx_sink_response,
             tx_async_error,
         )?;
-        mpris::spawn(tx_mpris_request, rx_mpris_event, c_token.clone()).await?;
+        mpris::core::spawn(tx_mpris_request, rx_mpris_event, c_token.clone()).await?;
 
         let res = tokio::select! {
             res = run(port, tx_db_request, tx_player_request, rx_mpris_request, rx_async_error, c_token.clone()) => res,

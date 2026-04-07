@@ -3,7 +3,7 @@ use crossbeam_channel as cbeam_chan;
 use futures_util::{SinkExt, StreamExt};
 use std::{
     collections::{HashMap, VecDeque},
-    net::SocketAddr,
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     sync::{Arc, Mutex, RwLock},
     time::Duration,
 };
@@ -25,13 +25,13 @@ use tracing::{error, warn};
 
 use crate::config::ParsedProxyConfig;
 use libfoksalaudio::{
-    player_controller,
+    mpris, player_controller,
     request::{PlayerRequest, PlayerRequestKind},
     sink::{self, SinkError},
 };
 use libfoksalcommon::net::{
     request::{
-        FileRequest, LocalRequest, LocalRequestKind, RawPlayerRequest, RemoteRequest,
+        FileRequest, LocalRequest, LocalRequestKind, MprisRequest, RawPlayerRequest, RemoteRequest,
         SubscribeArgs, UnsubscribeArgs,
     },
     response::{EventNotif, RemoteResponse, RemoteResponseInner, Response},
@@ -41,6 +41,8 @@ type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type ClientsMap = HashMap<SocketAddr, tokio_chan::UnboundedSender<RemoteResponseInner>>;
 
 const TIMEOUT: u64 = 5; // in seconds
+const MPRIS_FAKE_IP: u32 = u32::MAX;
+const MPRIS_FAKE_PORT: u16 = u16::MAX;
 
 async fn handle_client(
     tcp_stream: TcpStream,
@@ -158,11 +160,51 @@ async fn handle_client(
     res
 }
 
+async fn handle_mpris(
+    fake_addr: SocketAddr,
+    tx_remote_request: tokio_chan::UnboundedSender<RemoteRequest>,
+    tx_player_request: tokio_chan::UnboundedSender<PlayerRequest>,
+    mut rx_mpris_request: tokio_chan::UnboundedReceiver<MprisRequest>,
+    mut rx_remote_response: tokio_chan::UnboundedReceiver<RemoteResponseInner>,
+    c_token: CancellationToken,
+) -> Result<()> {
+    let mut counter = 0usize;
+    let mut pending = HashMap::new();
+    loop {
+        tokio::select! {
+            Some(MprisRequest { kind, respond_to }) = rx_mpris_request.recv() => {
+                match kind {
+                    LocalRequestKind::DbRequest(raw_request) => {
+                        let token = Some(counter.to_string());
+                        let remote_request = RemoteRequest::DbRequest { request: raw_request, client: fake_addr, token };
+                        let _ = tx_remote_request.send(remote_request);
+
+                        pending.insert(counter, respond_to);
+                        counter = counter.wrapping_add(1);
+                    }
+                    LocalRequestKind::PlayerRequest(raw_request) => {
+                        let _ = tx_player_request.send(PlayerRequest::new(PlayerRequestKind::Raw(raw_request), respond_to));
+                    }
+                }
+            }
+            Some(response_inner) = rx_remote_response.recv() => {
+                if let RemoteResponseInner::Response(response) = response_inner &&
+                    let Some(token) = response.inner()["token"].as_str().and_then(|t| t.parse::<usize>().ok()) &&
+                        let Some(tx) = pending.remove(&token) {
+                            let _ = tx.send(response);
+                }
+            }
+            _ = c_token.cancelled() => break Ok(()),
+        }
+    }
+}
+
 async fn run(
     ws_stream: WsStream,
     local_port: u16,
     tx_player_request: tokio_chan::UnboundedSender<PlayerRequest>,
     mut rx_file_request: tokio_chan::UnboundedReceiver<FileRequest>,
+    rx_mpris_request: tokio_chan::UnboundedReceiver<MprisRequest>,
     rx_async_error: broadcast::Receiver<SinkError>,
     c_token: CancellationToken,
 ) -> Result<()> {
@@ -172,10 +214,41 @@ async fn run(
         tokio_chan::unbounded_channel::<RemoteRequest>();
     let (tx_ping, mut rx_ping) = tokio_chan::unbounded_channel();
     let clients = Arc::new(RwLock::new(ClientsMap::new()));
-    let clients_clone = Arc::clone(&clients);
     let rxs_file_response = Arc::new(Mutex::new(VecDeque::new()));
     let rxs_file_response_clone = Arc::clone(&rxs_file_response);
+
+    // task to handle mpris requests
     let c_token_clone = c_token.clone();
+    let clients_clone = Arc::clone(&clients);
+    let tx_remote_request_mpris = tx_remote_request.clone();
+    let tx_player_request_mpris = tx_player_request.clone();
+    tokio::spawn(async move {
+        // we treat mpris kinda the same as a normal outside client,
+        // so we need to associate it with a socket address
+        let fake_addr = SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::from_bits(MPRIS_FAKE_IP),
+            MPRIS_FAKE_PORT,
+        ));
+        let (tx_remote_response, rx_remote_response) = tokio_chan::unbounded_channel();
+        {
+            clients_clone
+                .write()
+                .unwrap()
+                .insert(fake_addr, tx_remote_response);
+        }
+        let res = handle_mpris(
+            fake_addr,
+            tx_remote_request_mpris,
+            tx_player_request_mpris,
+            rx_mpris_request,
+            rx_remote_response,
+            c_token_clone,
+        )
+        .await;
+        if let Err(e) = res {
+            error!("MPRIS handler error ({})", e);
+        }
+    });
 
     // task to ping the remote
     tokio::spawn(async move {
@@ -206,6 +279,8 @@ async fn run(
     });
 
     // task to read responses from the remote and pass them to recipient clients
+    let c_token_clone = c_token.clone();
+    let clients_clone = Arc::clone(&clients);
     tokio::spawn(async move {
         loop {
             tokio::select! {
@@ -274,7 +349,8 @@ pub fn spawn(
     tokio::spawn(async move {
         let (tx_player_request, rx_player_request) = tokio_chan::unbounded_channel();
         let (tx_file_request, rx_file_request) = tokio_chan::unbounded_channel();
-        let (tx_mpris_event, _rx_mpris_event) = tokio_chan::unbounded_channel();
+        let (tx_mpris_request, rx_mpris_request) = tokio_chan::unbounded_channel();
+        let (tx_mpris_event, rx_mpris_event) = tokio_chan::unbounded_channel();
         let (tx_sink_response, rx_sink_response) = tokio_chan::unbounded_channel();
         let (tx_sink_request, rx_sink_request) = cbeam_chan::unbounded();
         let (tx_async_error, rx_async_error) = broadcast::channel(1);
@@ -297,9 +373,10 @@ pub fn spawn(
             tx_sink_response,
             tx_async_error,
         )?;
+        mpris::core::spawn(tx_mpris_request, rx_mpris_event, c_token.clone()).await?;
 
         let res = tokio::select! {
-            res = run(ws_stream, port, tx_player_request, rx_file_request, rx_async_error, c_token.clone()) => res,
+            res = run(ws_stream, port, tx_player_request, rx_file_request, rx_mpris_request, rx_async_error, c_token.clone()) => res,
             _ = c_token.cancelled() => Ok(()),
         };
         c_token.cancel();

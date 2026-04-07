@@ -51,7 +51,7 @@ Foksal isn't very useful all by itself, you will need an external client to cont
 For now, only a basic CLI-based client is available, install it with `cargo install foksal-ctl`. It's not very human-friendly, but can work well
 as part of a scripting pipeline (for instance, to display the current song on your statusbar).
 
-Another option is to control foksal with [playerctl](https://github.com/altdesktop/playerctl), just like any other MPRIS-compatible player (for now only `foksal-local`, `proxy` support coming soon).
+Another option is to control foksal with [playerctl](https://github.com/altdesktop/playerctl), just like any other MPRIS-compatible player.
 
 A [GUI client](https://codeberg.org/alfazet/feux) will be released soon.
 

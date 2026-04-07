@@ -47,18 +47,19 @@ pub enum SortOrder {
 }
 
 /// Regex filter used in `select` requests.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Filter {
     pub tag: TagKey,
     pub regex: String,
 }
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Serialize)]
 pub(crate) struct RawFilter {
     pub tag: String,
     pub regex: String,
 }
 
 /// Full player state.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct PlayerState {
     pub current_song: Option<PathBuf>,
     pub current_song_id: Option<usize>,
@@ -72,7 +73,7 @@ pub struct PlayerState {
 }
 
 /// Available tag keys
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TagKey {
     Album,
     AlbumArtist,
@@ -95,7 +96,7 @@ pub enum TagKey {
 }
 
 /// Valid types for tag values.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TagValue {
     Null,
     String(String),
@@ -112,6 +113,7 @@ pub type SongMetadata = HashMap<TagKey, TagValue>;
 pub(crate) type RawSongMetadata = HashMap<String, Value>;
 
 /// Group of URIs returned by the `select` request.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectGroup {
     /// URIs belonging to this group.
     pub uris: Vec<PathBuf>,
@@ -126,6 +128,7 @@ pub(crate) struct RawSelectGroup {
 }
 
 /// Group of unique values returned by the `unique` request.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UniqueGroup {
     /// Unique values of the requested tag within this group.
     pub unique: Vec<TagValue>,
