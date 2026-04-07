@@ -4,18 +4,24 @@ use std::{collections::HashMap, fmt, fmt::Display, path::PathBuf};
 
 use crate::error::FoksalError;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum PlaybackState {
+    #[default]
     Stopped,
     Playing,
     Paused,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum QueueMode {
     /// Songs come one after another in order of the queue.
+    #[default]
     Sequential,
     /// The played song will repeat indefinitely until it's manually changed.
     Loop,
@@ -28,7 +34,7 @@ pub enum QueueMode {
 }
 
 /// Subscription targets for events.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 pub enum SubscriptionTarget {
     Queue,
@@ -37,9 +43,10 @@ pub enum SubscriptionTarget {
 }
 
 /// Sorting order for `unique` requests.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 pub enum SortOrder {
+    #[default]
     #[serde(alias = "asc")]
     Ascending,
     #[serde(alias = "desc")]
@@ -61,19 +68,26 @@ pub(crate) struct RawFilter {
 /// Full player state.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct PlayerState {
+    /// URI of the currently playing song or `None` if no song is playing.
     pub current_song: Option<PathBuf>,
+    /// A unique ID of the currently playing song or `None` if no song is playing.
     pub current_song_id: Option<usize>,
+    /// Playback queue position (0-indexed) of `None` is playback is stopped.
     pub queue_pos: Option<usize>,
+    /// Playback queue mode (see [`QueueMode`]).
     pub queue_mode: QueueMode,
+    /// Playback queue content.
     pub queue: Vec<PathBuf>,
+    /// Playback state (see [`PlaybackState`]).
     pub playback_state: PlaybackState,
+    /// Current playback volume (on a scale of 0 to 100).
     pub volume: u8,
-    /// In seconds.
+    /// Elapsed time on the current song in seconds, 0 if no song is playing.
     pub elapsed: u64,
 }
 
 /// Available tag keys
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TagKey {
     Album,
     AlbumArtist,
@@ -96,8 +110,9 @@ pub enum TagKey {
 }
 
 /// Valid types for tag values.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TagValue {
+    #[default]
     Null,
     String(String),
     Number(i64),
