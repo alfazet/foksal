@@ -760,7 +760,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "foksal-ctl"
-version = "1.2.2"
+version = "1.2.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -772,7 +772,7 @@ dependencies = [
 
 [[package]]
 name = "foksal-local"
-version = "1.2.2"
+version = "1.2.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "foksal-proxy"
-version = "1.2.2"
+version = "1.2.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -820,7 +820,7 @@ dependencies = [
 
 [[package]]
 name = "foksal-remote"
-version = "1.2.2"
+version = "1.2.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -1179,7 +1179,7 @@ checksum = "b5b646652bf6661599e1da8901b3b9522896f01e736bad5f723fe7a3a27f899d"
 
 [[package]]
 name = "libfoksalaudio"
-version = "1.2.2"
+version = "1.2.3"
 dependencies = [
  "anyhow",
  "audioadapter",
@@ -1205,7 +1205,7 @@ dependencies = [
 
 [[package]]
 name = "libfoksalclient"
-version = "1.2.2"
+version = "1.2.3"
 dependencies = [
  "base64",
  "futures-util",
@@ -1219,7 +1219,7 @@ dependencies = [
 
 [[package]]
 name = "libfoksalcommon"
-version = "1.2.2"
+version = "1.2.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -1242,7 +1242,7 @@ dependencies = [
 
 [[package]]
 name = "libfoksaldb"
-version = "1.2.2"
+version = "1.2.3"
 dependencies = [
  "anyhow",
  "base64",
