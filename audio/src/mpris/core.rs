@@ -144,10 +144,6 @@ pub async fn spawn(
     Ok(())
 }
 
-// TODO:
-// - impl TrackList interface
-// - add mpris to proxy
-
 /// convert a metadata map from json to the format expected by mpris
 fn convert_metadata(track_id: TrackId, json: &Value) -> fdo::Result<Metadata> {
     let metadata = json
