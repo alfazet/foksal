@@ -166,6 +166,22 @@ impl From<Filter> for RawFilter {
     }
 }
 
+impl Filter {
+    pub fn new(tag: TagKey, regex: String) -> Self {
+        Self { tag, regex }
+    }
+
+    /// Creates a filter that filters only songs having a value of `key` equal to `val`.
+    /// Returns `None` if `val` is null.
+    pub fn from_kv_pair(key: TagKey, val: TagValue) -> Option<Self> {
+        match val {
+            TagValue::Null => None,
+            TagValue::String(s) => Some(Self::new(key, s)),
+            TagValue::Number(n) => Some(Self::new(key, n.to_string())),
+        }
+    }
+}
+
 impl TryFrom<&str> for TagKey {
     type Error = FoksalError;
 
@@ -264,5 +280,19 @@ impl TagValue {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filter_from_kv_pair() {
+        let key = TagKey::Artist;
+        let val = TagValue::String("FooBar".into());
+        let filter = Filter::new(key, "FooBar".into());
+
+        assert_eq!(filter, Filter::from_kv_pair(key, val).unwrap())
     }
 }
