@@ -167,18 +167,44 @@ impl From<Filter> for RawFilter {
 }
 
 impl Filter {
+    /// Caution: the given `regex` is (as the name implies) interpreted as a regular expression,
+    /// so remember about proper escaping.
     pub fn new(tag: TagKey, regex: String) -> Self {
         Self { tag, regex }
     }
 
     /// Creates a filter that filters only songs having a value of `key` equal to `val`.
-    /// Returns `None` if `val` is null.
+    /// Returns `None` if `val` is null. If `val` is a string, then
+    /// this function will sanitize it before converting it into a regex.
     pub fn from_kv_pair(key: TagKey, val: TagValue) -> Option<Self> {
         match val {
             TagValue::Null => None,
-            TagValue::String(s) => Some(Self::new(key, s)),
-            TagValue::Number(n) => Some(Self::new(key, n.to_string())),
+            TagValue::String(s) => {
+                let s = Self::sanitize(s);
+                Some(Self::new(key, format!("^{}$", s)))
+            }
+            TagValue::Number(n) => Some(Self::new(key, format!("^{}$", n))),
         }
+    }
+
+    fn sanitize(s: String) -> String {
+        s.replace('\\', r#"\\"#)
+            .replace('.', r#"\."#)
+            .replace('*', r#"\*"#)
+            .replace('+', r#"\+"#)
+            .replace('?', r#"\?"#)
+            .replace('^', r#"\^"#)
+            .replace('$', r#"\$"#)
+            .replace('|', r#"\|"#)
+            .replace('(', r#"\("#)
+            .replace(')', r#"\)"#)
+            .replace('[', r#"\["#)
+            .replace(']', r#"\]"#)
+            .replace('{', r#"\{"#)
+            .replace('}', r#"\}"#)
+            .replace(',', r#"\,"#)
+            .replace(':', r#"\:"#)
+            .replace('-', r#"\-"#)
     }
 }
 
@@ -291,8 +317,17 @@ mod tests {
     fn filter_from_kv_pair() {
         let key = TagKey::Artist;
         let val = TagValue::String("FooBar".into());
-        let filter = Filter::new(key, "FooBar".into());
+        let filter = Filter::new(key, "^FooBar$".into());
 
         assert_eq!(filter, Filter::from_kv_pair(key, val).unwrap())
+    }
+
+    #[test]
+    fn sanitization() {
+        let key = TagKey::Artist;
+        let val = TagValue::String(r#"$(-.-)$ ///\\\"#.into());
+        let filter = Filter::from_kv_pair(key, val).unwrap();
+
+        assert_eq!(filter.regex, r#"^\$\(\-\.\-\)\$ ///\\\\\\$"#);
     }
 }
