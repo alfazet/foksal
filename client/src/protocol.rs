@@ -9,8 +9,7 @@ use crate::model::{
 
 /// A request sent to foksal.
 #[derive(Debug, Serialize)]
-#[serde(tag = "kind")]
-#[serde(rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum Request {
     AddToQueue {
         uris: Vec<PathBuf>,
@@ -150,6 +149,52 @@ pub(crate) struct WelcomeMessage {
     pub version: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[serde(tag = "player_event", rename_all = "snake_case")]
+/// Emitted to subscribers to player events.
+pub enum PlayerEvent {
+    /// Queue contents changed.
+    QueueContent { queue: Vec<PathBuf> },
+    /// Current position in the queue changed.
+    QueuePos { pos: Option<usize> },
+    /// The queue playback mode changed.
+    QueueMode { mode: QueueMode },
+    /// A new song started playing.
+    CurrentSong { uri: PathBuf, id: usize },
+    /// Playback state changed.
+    PlaybackState { state: PlaybackState },
+    /// Volume changed.
+    Volume { volume: u8 },
+    /// Elapsed seconds in the current song.
+    Elapsed { seconds: u64 },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[serde(tag = "db_event", rename_all = "snake_case")]
+/// Emitted to subscribers to database events.
+pub enum DbEvent {
+    /// A song was added to the database.
+    Create { uri: PathBuf },
+    /// A song's metadata was modified.
+    Modify { uri: PathBuf },
+    /// A song was removed from the database.
+    Remove { uri: PathBuf },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[serde(untagged)]
+/// An asynchronous event emitted by foksal.
+pub enum Event {
+    Player(PlayerEvent),
+    Db(DbEvent),
+}
+
+#[derive(Debug)]
+pub enum AsyncMessage {
+    Event(Event),
+    Error(FoksalError),
+}
+
 impl RawResponse {
     pub fn into_player_state(self) -> Result<PlayerState, FoksalError> {
         let err = || FoksalError::UnexpectedResponse { request: "state" };
@@ -179,39 +224,6 @@ impl RawResponse {
             .ok_or(FoksalError::UnexpectedResponse { request: "unique" })?;
         serde_json::from_value(v).map_err(FoksalError::Serialization)
     }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "event")]
-#[serde(rename_all = "snake_case")]
-/// An asynchronous event emitted by foksal to all relevant subscribers.
-pub enum Event {
-    /// Queue contents changed.
-    QueueContent { queue: Vec<PathBuf> },
-    /// Current position in the queue changed.
-    QueuePos { pos: Option<usize> },
-    /// The queue playback mode changed.
-    QueueMode { mode: QueueMode },
-    /// A new song started playing.
-    CurrentSong { uri: PathBuf, id: usize },
-    /// Playback state changed.
-    PlaybackState { state: PlaybackState },
-    /// Volume changed.
-    Volume { volume: u8 },
-    /// Elapsed seconds in the current song.
-    Elapsed { seconds: u64 },
-    /// A song was added to the database.
-    Create { uri: PathBuf },
-    /// A song's metadata was modified.
-    Modify { uri: PathBuf },
-    /// A song was removed from the database.
-    Remove { uri: PathBuf },
-}
-
-#[derive(Debug)]
-pub enum AsyncMessage {
-    Event(Event),
-    Error(FoksalError),
 }
 
 #[cfg(test)]
@@ -284,11 +296,11 @@ mod tests {
     #[test]
     fn serialize_subscribe() {
         let req = Request::Subscribe {
-            to: SubscriptionTarget::Queue,
+            to: SubscriptionTarget::Player,
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["kind"], "subscribe");
-        assert_eq!(json["to"], "queue");
+        assert_eq!(json["to"], "player");
     }
 
     #[test]
@@ -340,10 +352,10 @@ mod tests {
 
     #[test]
     fn deserialize_playback_state_event() {
-        let json = r#"{"event": "playback_state", "state": "paused"}"#;
+        let json = r#"{"player_event": "playback_state", "state": "paused"}"#;
         let msg: FoksalMessage = serde_json::from_str(json).unwrap();
         match msg {
-            FoksalMessage::Event(Event::PlaybackState { state }) => {
+            FoksalMessage::Event(Event::Player(PlayerEvent::PlaybackState { state })) => {
                 assert_eq!(state, PlaybackState::Paused);
             }
             other => panic!("expected PlaybackState event, got {other:?}"),
@@ -352,10 +364,10 @@ mod tests {
 
     #[test]
     fn deserialize_volume_event() {
-        let json = r#"{"event": "volume", "volume": 75}"#;
+        let json = r#"{"player_event": "volume", "volume": 75}"#;
         let msg: FoksalMessage = serde_json::from_str(json).unwrap();
         match msg {
-            FoksalMessage::Event(Event::Volume { volume }) => {
+            FoksalMessage::Event(Event::Player(PlayerEvent::Volume { volume })) => {
                 assert_eq!(volume, 75);
             }
             other => panic!("expected Volume event, got {other:?}"),
@@ -364,10 +376,10 @@ mod tests {
 
     #[test]
     fn deserialize_elapsed_event() {
-        let json = r#"{"event": "elapsed", "seconds": 42}"#;
+        let json = r#"{"player_event": "elapsed", "seconds": 42}"#;
         let msg: FoksalMessage = serde_json::from_str(json).unwrap();
         match msg {
-            FoksalMessage::Event(Event::Elapsed { seconds }) => {
+            FoksalMessage::Event(Event::Player(PlayerEvent::Elapsed { seconds })) => {
                 assert_eq!(seconds, 42);
             }
             other => panic!("expected Elapsed event, got {other:?}"),
@@ -389,10 +401,10 @@ mod tests {
 
     #[test]
     fn deserialize_create_event() {
-        let json = r#"{"event": "create", "uri": "Artist/Album/New.flac"}"#;
+        let json = r#"{"db_event": "create", "uri": "Artist/Album/New.flac"}"#;
         let msg: FoksalMessage = serde_json::from_str(json).unwrap();
         match msg {
-            FoksalMessage::Event(Event::Create { uri }) => {
+            FoksalMessage::Event(Event::Db(DbEvent::Create { uri })) => {
                 assert_eq!(uri, PathBuf::from("Artist/Album/New.flac"));
             }
             other => panic!("expected Create event, got {other:?}"),
@@ -482,10 +494,10 @@ mod tests {
 
     #[test]
     fn deserialize_queue_pos_event_null() {
-        let json = r#"{"event": "queue_pos", "pos": null}"#;
+        let json = r#"{"player_event": "queue_pos", "pos": null}"#;
         let msg: FoksalMessage = serde_json::from_str(json).unwrap();
         match msg {
-            FoksalMessage::Event(Event::QueuePos { pos }) => {
+            FoksalMessage::Event(Event::Player(PlayerEvent::QueuePos { pos })) => {
                 assert!(pos.is_none());
             }
             other => panic!("expected QueuePos event, got {other:?}"),

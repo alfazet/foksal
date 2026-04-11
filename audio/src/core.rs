@@ -19,7 +19,7 @@ type PlayerSubscribersMap =
     HashMap<(PlayerSubTarget, SocketAddr), tokio_chan::UnboundedSender<EventNotif>>;
 
 #[derive(Clone, Serialize)]
-#[serde(tag = "event", rename_all = "snake_case")]
+#[serde(tag = "player_event", rename_all = "snake_case")]
 pub enum PlayerEvent {
     QueueContent { queue: Vec<PathBuf> },
     QueuePos { pos: Option<usize> },
@@ -231,35 +231,35 @@ impl Player {
 
     pub fn notify_queue_pos(&self) {
         let pos = self.queue.pos();
-        self.notify_subscribers(PlayerSubTarget::Queue, PlayerEvent::QueuePos { pos });
+        self.notify_subscribers(PlayerSubTarget::Player, PlayerEvent::QueuePos { pos });
     }
 
     pub fn notify_queue_content(&self) {
         let queue = self.queue.list_cloned();
-        self.notify_subscribers(PlayerSubTarget::Queue, PlayerEvent::QueueContent { queue });
+        self.notify_subscribers(PlayerSubTarget::Player, PlayerEvent::QueueContent { queue });
     }
 
     pub fn notify_playback_state(&self, state: PlaybackState) {
         let ev = PlayerEvent::PlaybackState { state };
-        self.notify_subscribers(PlayerSubTarget::Sink, ev.clone());
+        self.notify_subscribers(PlayerSubTarget::Player, ev.clone());
         self.notify_mpris(ev);
     }
 
     pub fn notify_queue_mode(&self) {
         let mode = self.queue.mode();
         let ev = PlayerEvent::QueueMode { mode };
-        self.notify_subscribers(PlayerSubTarget::Queue, ev.clone());
+        self.notify_subscribers(PlayerSubTarget::Player, ev.clone());
         self.notify_mpris(ev);
     }
 
     pub fn notify_volume(&self, Volume(volume): Volume) {
         let ev = PlayerEvent::Volume { volume };
-        self.notify_subscribers(PlayerSubTarget::Sink, ev.clone());
+        self.notify_subscribers(PlayerSubTarget::Player, ev.clone());
         self.notify_mpris(ev);
     }
 
     pub fn notify_elapsed(&self, seconds: u64) {
-        self.notify_subscribers(PlayerSubTarget::Sink, PlayerEvent::Elapsed { seconds });
+        self.notify_subscribers(PlayerSubTarget::Player, PlayerEvent::Elapsed { seconds });
     }
 
     pub fn notify_song(&self, uri: impl AsRef<Path>, id: usize) {
@@ -267,7 +267,7 @@ impl Player {
             uri: uri.as_ref().to_path_buf(),
             id,
         };
-        self.notify_subscribers(PlayerSubTarget::Sink, ev.clone());
+        self.notify_subscribers(PlayerSubTarget::Player, ev.clone());
         self.notify_mpris(ev);
     }
 

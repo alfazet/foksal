@@ -17,7 +17,7 @@ type Table = BTreeMap<PathBuf, SongMetadata>;
 type DbSubscribersMap = HashMap<(DbSubTarget, SocketAddr), tokio_chan::UnboundedSender<EventNotif>>;
 
 #[derive(Clone, Serialize)]
-#[serde(tag = "event", rename_all = "snake_case")]
+#[serde(tag = "db_event", rename_all = "snake_case")]
 pub enum DbEvent {
     Create { uri: PathBuf },
     Modify { uri: PathBuf },
@@ -136,7 +136,7 @@ impl SharedDb {
         let data = SongMetadata::try_new(&uri, &self.music_root)?;
         let mut db = self.inner.write().unwrap();
         db.create(uri.as_ref(), data);
-        db.notify_subscribers(DbSubTarget::Update, DbEvent::Create { uri: uri.into() });
+        db.notify_subscribers(DbSubTarget::Database, DbEvent::Create { uri: uri.into() });
 
         Ok(())
     }
@@ -145,7 +145,7 @@ impl SharedDb {
         let data = SongMetadata::try_new(&uri, &self.music_root)?;
         let mut db = self.inner.write().unwrap();
         db.modify(uri.as_ref(), data);
-        db.notify_subscribers(DbSubTarget::Update, DbEvent::Modify { uri: uri.into() });
+        db.notify_subscribers(DbSubTarget::Database, DbEvent::Modify { uri: uri.into() });
 
         Ok(())
     }
@@ -153,7 +153,7 @@ impl SharedDb {
     pub fn remove(&mut self, uri: impl AsRef<Path> + Into<PathBuf>) -> Option<()> {
         let mut db = self.inner.write().unwrap();
         db.remove(uri.as_ref())?;
-        db.notify_subscribers(DbSubTarget::Update, DbEvent::Remove { uri: uri.into() });
+        db.notify_subscribers(DbSubTarget::Database, DbEvent::Remove { uri: uri.into() });
 
         Some(())
     }

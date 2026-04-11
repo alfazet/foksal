@@ -29,14 +29,13 @@ pub struct UnsubscribeArgs<T: SubTarget> {
 #[derive(Copy, Clone, Eq, Hash, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "to", rename_all = "snake_case")]
 pub enum DbSubTarget {
-    Update,
+    Database,
 }
 
 #[derive(Copy, Clone, Deserialize, Eq, Hash, PartialEq)]
 #[serde(tag = "to", rename_all = "snake_case")]
 pub enum PlayerSubTarget {
-    Queue,
-    Sink,
+    Player,
 }
 
 #[derive(Deserialize, Serialize)]

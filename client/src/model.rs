@@ -7,7 +7,7 @@ use crate::error::FoksalError;
 #[derive(
     Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord,
 )]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum PlaybackState {
     #[default]
     Stopped,
@@ -18,7 +18,7 @@ pub enum PlaybackState {
 #[derive(
     Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord,
 )]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum QueueMode {
     /// Songs come one after another in order of the queue.
     #[default]
@@ -35,16 +35,15 @@ pub enum QueueMode {
 
 /// Subscription targets for events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum SubscriptionTarget {
-    Queue,
-    Sink,
-    Update,
+    Player,
+    Database,
 }
 
 /// Sorting order for `unique` requests.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum SortOrder {
     #[default]
     #[serde(alias = "asc")]

@@ -48,7 +48,8 @@ impl FoksalClient {
     ///     }
     /// });
     ///
-    /// client.subscribe(SubscriptionTarget::Sink).await?;
+    /// client.subscribe(SubscriptionTarget::Player).await?;
+    /// client.subscribe(SubscriptionTarget::Database).await?;
     /// client.toggle().await?;
     /// # Ok(())
     /// # }
