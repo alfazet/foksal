@@ -276,7 +276,15 @@ impl BlockingFoksalClient {
     pub fn close(&mut self) -> Result<(), FoksalError> {
         self.stream
             .send(WsMessage::Close(None))
-            .map_err(FoksalError::WebSocket)
+            .map_err(FoksalError::WebSocket)?;
+        loop {
+            match self.stream.read() {
+                Ok(WsMessage::Close(_)) | Err(_) => break,
+                Ok(_) => continue,
+            }
+        }
+
+        Ok(())
     }
 
     /// send a request (we care about the content of the positive response)

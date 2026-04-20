@@ -15,15 +15,16 @@ use tokio_util::sync::CancellationToken;
 use tracing::error;
 
 use crate::config::ParsedLocalConfig;
+
 use libfoksalaudio::{
-    mpris, player_controller,
+    player_controller,
     request::{PlayerRequest, PlayerRequestKind},
     sink::{self, SinkError},
 };
 use libfoksalcommon::net::{
     request::{
-        LocalRequest, LocalRequestKind, MprisRequest, RawDbRequest, RawPlayerRequest,
-        SubscribeArgs, UnsubscribeArgs,
+        LocalRequest, LocalRequestKind, RawDbRequest, RawPlayerRequest, SubscribeArgs,
+        UnsubscribeArgs,
     },
     response::{EventNotif, Response},
 };
@@ -31,6 +32,17 @@ use libfoksaldb::{
     db_controller,
     request::{DbRequest, DbRequestKind},
 };
+
+#[cfg(feature = "mpris")]
+macro_rules! group_cfg {
+    ($($tt:tt)*) => { $($tt)* }
+}
+
+#[cfg(feature = "mpris")]
+group_cfg! {
+    use libfoksalaudio::mpris;
+    use libfoksalcommon::net::request::MprisRequest;
+}
 
 async fn handle_request(
     bytes: Bytes,
@@ -101,6 +113,7 @@ async fn handle_client(
     let (mut ws_write, mut ws_read) = ws_stream.split();
     let (tx_msg, mut rx_msg) = tokio_chan::unbounded_channel();
     let (tx_event, mut rx_event) = tokio_chan::unbounded_channel::<EventNotif>();
+    let conn_c_token = CancellationToken::new();
 
     // task to respond to the client
     tokio::spawn(async move {
@@ -123,11 +136,17 @@ async fn handle_client(
 
     // task to send errors to the client
     let tx_msg_clone = tx_msg.clone();
+    let conn_c_token_clone = conn_c_token.clone();
     tokio::spawn(async move {
-        while let Ok(error) = rx_async_error.recv().await {
-            let res = error.to_bytes();
-            if let Ok(bytes) = res {
-                let _ = tx_msg_clone.send(WsMessage::Binary(bytes));
+        loop {
+            tokio::select! {
+                Ok(error) = rx_async_error.recv() => {
+                    let res = error.to_bytes();
+                    if let Ok(bytes) = res {
+                        let _ = tx_msg_clone.send(WsMessage::Binary(bytes));
+                    }
+                }
+                _ = conn_c_token_clone.cancelled() => break,
             }
         }
     });
@@ -160,12 +179,14 @@ async fn handle_client(
     };
     let _ = tx_msg.send(WsMessage::Close(Some(CloseFrame {
         code: CloseCode::Normal,
-        reason: Utf8Bytes::from_static("foksal shutting down"),
+        reason: Utf8Bytes::from_static("connection closed"),
     })));
+    conn_c_token.cancel();
 
     res
 }
 
+#[cfg(feature = "mpris")]
 async fn handle_mpris(
     tx_db_request: tokio_chan::UnboundedSender<DbRequest>,
     tx_player_request: tokio_chan::UnboundedSender<PlayerRequest>,
@@ -193,25 +214,28 @@ async fn run(
     port: u16,
     tx_db_request: tokio_chan::UnboundedSender<DbRequest>,
     tx_player_request: tokio_chan::UnboundedSender<PlayerRequest>,
-    rx_mpris_request: tokio_chan::UnboundedReceiver<MprisRequest>,
+    #[cfg(feature = "mpris")] rx_mpris_request: tokio_chan::UnboundedReceiver<MprisRequest>,
     rx_async_error: broadcast::Receiver<SinkError>,
     c_token: CancellationToken,
 ) -> Result<()> {
-    let tx_db_request_mpris = tx_db_request.clone();
-    let tx_player_request_mpris = tx_player_request.clone();
-    let c_token_clone = c_token.clone();
-    tokio::spawn(async move {
-        let res = handle_mpris(
-            tx_db_request_mpris,
-            tx_player_request_mpris,
-            rx_mpris_request,
-            c_token_clone,
-        )
-        .await;
-        if let Err(e) = res {
-            error!("MPRIS handler error ({})", e);
-        }
-    });
+    #[cfg(feature = "mpris")]
+    {
+        let tx_db_request_mpris = tx_db_request.clone();
+        let tx_player_request_mpris = tx_player_request.clone();
+        let c_token_clone = c_token.clone();
+        tokio::spawn(async move {
+            let res = handle_mpris(
+                tx_db_request_mpris,
+                tx_player_request_mpris,
+                rx_mpris_request,
+                c_token_clone,
+            )
+            .await;
+            if let Err(e) = res {
+                error!("MPRIS handler error ({})", e);
+            }
+        });
+    }
 
     let listener = TcpListener::bind(format!("localhost:{}", port)).await?;
     loop {
@@ -238,7 +262,9 @@ pub fn spawn(config: ParsedLocalConfig, c_token: CancellationToken) -> JoinHandl
         let (tx_db_request, rx_db_request) = tokio_chan::unbounded_channel();
         let (tx_player_request, rx_player_request) = tokio_chan::unbounded_channel();
         let (tx_file_request, rx_file_request) = tokio_chan::unbounded_channel();
+        #[cfg(feature = "mpris")]
         let (tx_mpris_request, rx_mpris_request) = tokio_chan::unbounded_channel();
+        #[cfg(feature = "mpris")]
         let (tx_mpris_event, rx_mpris_event) = tokio_chan::unbounded_channel();
         let (tx_sink_response, rx_sink_response) = tokio_chan::unbounded_channel();
         let (tx_sink_request, rx_sink_request) = cbeam_chan::unbounded();
@@ -263,6 +289,7 @@ pub fn spawn(config: ParsedLocalConfig, c_token: CancellationToken) -> JoinHandl
 
         player_controller::spawn(
             tx_sink_request,
+            #[cfg(feature = "mpris")]
             tx_mpris_event,
             rx_player_request,
             rx_sink_response,
@@ -274,10 +301,19 @@ pub fn spawn(config: ParsedLocalConfig, c_token: CancellationToken) -> JoinHandl
             tx_sink_response,
             tx_async_error,
         )?;
+        #[cfg(feature = "mpris")]
         mpris::core::spawn(tx_mpris_request, rx_mpris_event, c_token.clone()).await?;
 
         let res = tokio::select! {
-            res = run(port, tx_db_request, tx_player_request, rx_mpris_request, rx_async_error, c_token.clone()) => res,
+            res = run(
+                port,
+                tx_db_request,
+                tx_player_request,
+                #[cfg(feature = "mpris")]
+                rx_mpris_request,
+                rx_async_error,
+                c_token.clone(),
+            ) => res,
             _ = c_token.cancelled() => Ok(()),
         };
         c_token.cancel();

@@ -28,3 +28,7 @@ tracing-subscriber = { workspace = true }
 
 libfoksalaudio = { workspace = true }
 libfoksalcommon = { workspace = true }
+
+[features]
+default = []
+mpris = []

@@ -3,7 +3,7 @@ use std::fmt::Display;
 use tokio::sync::mpsc as tokio_chan;
 
 use crate::{
-    core::{Player, PlayerEvent},
+    core::Player,
     request::{ParsedPlayerRequestArgs, PlayerRequest, PlayerRequestKind},
     sink::{SinkRequest, SinkResponse},
 };
@@ -11,6 +11,9 @@ use libfoksalcommon::net::{
     request::{RawPlayerRequest, RawPlayerRequestArgs, SubscribeArgs, UnsubscribeArgs},
     response::Response,
 };
+
+#[cfg(feature = "mpris")]
+use crate::core::PlayerEvent;
 
 fn handle_request<R: RawPlayerRequestArgs, P: ParsedPlayerRequestArgs + TryFrom<R>>(
     player: &Player,
@@ -42,11 +45,15 @@ where
 
 async fn run(
     tx_sink_request: cbeam_chan::Sender<SinkRequest>,
-    tx_mpris_event: tokio_chan::UnboundedSender<PlayerEvent>,
+    #[cfg(feature = "mpris")] tx_mpris_event: tokio_chan::UnboundedSender<PlayerEvent>,
     mut rx_player_request: tokio_chan::UnboundedReceiver<PlayerRequest>,
     mut rx_sink_response: tokio_chan::UnboundedReceiver<SinkResponse>,
 ) {
-    let mut player = Player::new(tx_sink_request, tx_mpris_event);
+    let mut player = Player::new(
+        tx_sink_request,
+        #[cfg(feature = "mpris")]
+        tx_mpris_event,
+    );
     loop {
         tokio::select! {
             Some(PlayerRequest { kind, respond_to }) = rx_player_request.recv() => {
@@ -141,13 +148,14 @@ async fn run(
 
 pub fn spawn(
     tx_sink_request: cbeam_chan::Sender<SinkRequest>,
-    tx_mpris_event: tokio_chan::UnboundedSender<PlayerEvent>,
+    #[cfg(feature = "mpris")] tx_mpris_event: tokio_chan::UnboundedSender<PlayerEvent>,
     rx_player_request: tokio_chan::UnboundedReceiver<PlayerRequest>,
     rx_sink_response: tokio_chan::UnboundedReceiver<SinkResponse>,
 ) {
     tokio::spawn(async move {
         run(
             tx_sink_request,
+            #[cfg(feature = "mpris")]
             tx_mpris_event,
             rx_player_request,
             rx_sink_response,

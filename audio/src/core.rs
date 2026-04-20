@@ -34,18 +34,20 @@ pub struct Player {
     queue: Queue,
     subscribers: PlayerSubscribersMap,
     tx_sink_request: cbeam_chan::Sender<SinkRequest>,
+    #[cfg(feature = "mpris")]
     tx_mpris_event: tokio_chan::UnboundedSender<PlayerEvent>,
 }
 
 impl Player {
     pub fn new(
         tx_sink_request: cbeam_chan::Sender<SinkRequest>,
-        tx_mpris_event: tokio_chan::UnboundedSender<PlayerEvent>,
+        #[cfg(feature = "mpris")] tx_mpris_event: tokio_chan::UnboundedSender<PlayerEvent>,
     ) -> Self {
         Self {
             queue: Queue::new(),
             subscribers: HashMap::new(),
             tx_sink_request,
+            #[cfg(feature = "mpris")]
             tx_mpris_event,
         }
     }
@@ -242,6 +244,7 @@ impl Player {
     pub fn notify_playback_state(&self, state: PlaybackState) {
         let ev = PlayerEvent::PlaybackState { state };
         self.notify_subscribers(PlayerSubTarget::Player, ev.clone());
+        #[cfg(feature = "mpris")]
         self.notify_mpris(ev);
     }
 
@@ -249,12 +252,14 @@ impl Player {
         let mode = self.queue.mode();
         let ev = PlayerEvent::QueueMode { mode };
         self.notify_subscribers(PlayerSubTarget::Player, ev.clone());
+        #[cfg(feature = "mpris")]
         self.notify_mpris(ev);
     }
 
     pub fn notify_volume(&self, Volume(volume): Volume) {
         let ev = PlayerEvent::Volume { volume };
         self.notify_subscribers(PlayerSubTarget::Player, ev.clone());
+        #[cfg(feature = "mpris")]
         self.notify_mpris(ev);
     }
 
@@ -268,6 +273,7 @@ impl Player {
             id,
         };
         self.notify_subscribers(PlayerSubTarget::Player, ev.clone());
+        #[cfg(feature = "mpris")]
         self.notify_mpris(ev);
     }
 
@@ -287,6 +293,7 @@ impl Player {
         }
     }
 
+    #[cfg(feature = "mpris")]
     fn notify_mpris(&self, event: PlayerEvent) {
         let _ = self.tx_mpris_event.send(event);
     }
