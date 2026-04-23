@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use crossbeam_channel as cbeam_chan;
 use futures_util::{SinkExt, StreamExt};
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::{
     collections::{HashMap, VecDeque},
     net::SocketAddr,
@@ -24,11 +25,13 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, warn};
 
 use crate::config::ParsedProxyConfig;
+use libfoksalaudio::mpris;
 use libfoksalaudio::{
     player_controller,
     request::{PlayerRequest, PlayerRequestKind},
     sink::{self, SinkError},
 };
+use libfoksalcommon::net::request::MprisRequest;
 use libfoksalcommon::net::{
     request::{
         FileRequest, LocalRequest, LocalRequestKind, RawPlayerRequest, RemoteRequest,
@@ -37,19 +40,8 @@ use libfoksalcommon::net::{
     response::{EventNotif, RemoteResponse, RemoteResponseInner, Response},
 };
 
-#[cfg(feature = "mpris")]
-macro_rules! group_cfg {
-    ($($tt:tt)*) => { $($tt)* }
-}
-
-#[cfg(feature = "mpris")]
-group_cfg! {
-    use libfoksalaudio::mpris;
-    use libfoksalcommon::net::request::MprisRequest;
-    use std::net::{Ipv4Addr, SocketAddrV4};
-    const MPRIS_FAKE_IP: u32 = u32::MAX;
-    const MPRIS_FAKE_PORT: u16 = u16::MAX;
-}
+const MPRIS_FAKE_IP: u32 = u32::MAX;
+const MPRIS_FAKE_PORT: u16 = u16::MAX;
 
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type ClientsMap = HashMap<SocketAddr, tokio_chan::UnboundedSender<RemoteResponseInner>>;
@@ -172,7 +164,6 @@ async fn handle_client(
     res
 }
 
-#[cfg(feature = "mpris")]
 async fn handle_mpris(
     fake_addr: SocketAddr,
     tx_remote_request: tokio_chan::UnboundedSender<RemoteRequest>,
@@ -217,7 +208,7 @@ async fn run(
     local_port: u16,
     tx_player_request: tokio_chan::UnboundedSender<PlayerRequest>,
     mut rx_file_request: tokio_chan::UnboundedReceiver<FileRequest>,
-    #[cfg(feature = "mpris")] rx_mpris_request: tokio_chan::UnboundedReceiver<MprisRequest>,
+    rx_mpris_request: tokio_chan::UnboundedReceiver<MprisRequest>,
     rx_async_error: broadcast::Receiver<SinkError>,
     c_token: CancellationToken,
 ) -> Result<()> {
@@ -231,40 +222,37 @@ async fn run(
     let rxs_file_response_clone = Arc::clone(&rxs_file_response);
 
     // task to handle mpris requests
-    #[cfg(feature = "mpris")]
-    {
-        let c_token_clone = c_token.clone();
-        let clients_clone = Arc::clone(&clients);
-        let tx_remote_request_mpris = tx_remote_request.clone();
-        let tx_player_request_mpris = tx_player_request.clone();
-        tokio::spawn(async move {
-            // we treat mpris kinda the same as a normal outside client,
-            // so we need to associate it with a socket address
-            let fake_addr = SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::from_bits(MPRIS_FAKE_IP),
-                MPRIS_FAKE_PORT,
-            ));
-            let (tx_remote_response, rx_remote_response) = tokio_chan::unbounded_channel();
-            {
-                clients_clone
-                    .write()
-                    .unwrap()
-                    .insert(fake_addr, tx_remote_response);
-            }
-            let res = handle_mpris(
-                fake_addr,
-                tx_remote_request_mpris,
-                tx_player_request_mpris,
-                rx_mpris_request,
-                rx_remote_response,
-                c_token_clone,
-            )
-            .await;
-            if let Err(e) = res {
-                error!("MPRIS handler error ({})", e);
-            }
-        });
-    }
+    let c_token_clone = c_token.clone();
+    let clients_clone = Arc::clone(&clients);
+    let tx_remote_request_mpris = tx_remote_request.clone();
+    let tx_player_request_mpris = tx_player_request.clone();
+    tokio::spawn(async move {
+        // we treat mpris kinda the same as a normal outside client,
+        // so we need to associate it with a socket address
+        let fake_addr = SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::from_bits(MPRIS_FAKE_IP),
+            MPRIS_FAKE_PORT,
+        ));
+        let (tx_remote_response, rx_remote_response) = tokio_chan::unbounded_channel();
+        {
+            clients_clone
+                .write()
+                .unwrap()
+                .insert(fake_addr, tx_remote_response);
+        }
+        let res = handle_mpris(
+            fake_addr,
+            tx_remote_request_mpris,
+            tx_player_request_mpris,
+            rx_mpris_request,
+            rx_remote_response,
+            c_token_clone,
+        )
+        .await;
+        if let Err(e) = res {
+            error!("MPRIS handler error ({})", e);
+        }
+    });
 
     // task to ping the remote
     tokio::spawn(async move {
@@ -365,9 +353,7 @@ pub fn spawn(
     tokio::spawn(async move {
         let (tx_player_request, rx_player_request) = tokio_chan::unbounded_channel();
         let (tx_file_request, rx_file_request) = tokio_chan::unbounded_channel();
-        #[cfg(feature = "mpris")]
         let (tx_mpris_request, rx_mpris_request) = tokio_chan::unbounded_channel();
-        #[cfg(feature = "mpris")]
         let (tx_mpris_event, rx_mpris_event) = tokio_chan::unbounded_channel();
         let (tx_sink_response, rx_sink_response) = tokio_chan::unbounded_channel();
         let (tx_sink_request, rx_sink_request) = cbeam_chan::unbounded();
@@ -380,7 +366,6 @@ pub fn spawn(
         } = config;
         player_controller::spawn(
             tx_sink_request,
-            #[cfg(feature = "mpris")]
             tx_mpris_event,
             rx_player_request,
             rx_sink_response,
@@ -392,7 +377,6 @@ pub fn spawn(
             tx_sink_response,
             tx_async_error,
         )?;
-        #[cfg(feature = "mpris")]
         mpris::core::spawn(tx_mpris_request, rx_mpris_event, c_token.clone()).await?;
 
         let res = tokio::select! {
@@ -400,7 +384,6 @@ pub fn spawn(
                 port,
                 tx_player_request,
                 rx_file_request,
-                #[cfg(feature = "mpris")]
                 rx_mpris_request,
                 rx_async_error,
                 c_token.clone()) => res,

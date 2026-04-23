@@ -1,6 +1,5 @@
 pub mod core;
 pub mod device;
-#[cfg(feature = "mpris")]
 pub mod mpris;
 pub mod player_controller;
 pub mod request;
